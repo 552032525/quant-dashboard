@@ -1,8 +1,7 @@
 ﻿from pydantic import BaseModel
-from datetime import date
 
 class KLineItem(BaseModel):
-    date: date
+    date: str
     open: float
     high: float
     low: float
@@ -26,3 +25,37 @@ class SymbolInfo(BaseModel):
     name: str
     market: str
     type: str
+
+class IndexQuote(BaseModel):
+    code: str
+    name: str
+    price: float
+    change: float
+    change_pct: float
+
+class MarketHeat(BaseModel):
+    up_count: int
+    down_count: int
+    flat_count: int
+    limit_up: int
+    limit_down: int
+    total_volume: float
+    north_flow: float
+
+class SectorInfo(BaseModel):
+    name: str
+    change_pct: float
+    lead_stock: str
+    stock_count: int
+
+class RankingItem(BaseModel):
+    code: str
+    name: str
+    price: float
+    change_pct: float
+
+class IntradayPoint(BaseModel):
+    time: str
+    price: float
+    avg_price: float
+    volume: float

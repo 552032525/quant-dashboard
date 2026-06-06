@@ -15,6 +15,11 @@ export const api = {
       return request<any[]>(`/market/kline/${code}?${params.toString()}`);
     },
     search: (keyword: string) => request<any[]>(`/market/search?keyword=${encodeURIComponent(keyword)}`),
+    index: () => request<any[]>("/market/index"),
+    heat: () => request<any>("/market/heat"),
+    sectors: (type = "industry") => request<any[]>(`/market/sectors?type=${type}`),
+    rankings: (type = "up", limit = 20) => request<any[]>(`/market/rankings?type=${type}&limit=${limit}`),
+    intraday: (code: string) => request<any[]>(`/market/intraday/${code}`),
   },
   portfolio: {
     list: () => request<any[]>("/portfolio"),

@@ -36,6 +36,9 @@ class BaostockAdapter(DataSourceAdapter):
 
     def _get_kline(self, code: str, start_date: date, end_date: date, period: str = "daily") -> list[dict]:
         freq_map = {"daily": "d", "weekly": "w", "monthly": "m"}
+        minute_periods = {"1": "1", "5": "5", "15": "15", "30": "30", "60": "60"}
+        if period in minute_periods:
+            return []
         return self._call({
             "method": "kline", "code": code,
             "start": start_date.strftime("%Y-%m-%d"),
@@ -48,6 +51,21 @@ class BaostockAdapter(DataSourceAdapter):
 
     def _search_symbol(self, keyword: str) -> list[dict]:
         return self._call({"method": "search", "keyword": keyword})
+
+    async def get_index_quotes(self) -> list[dict]:
+        return []
+
+    async def get_market_heat(self) -> dict:
+        return {"up_count":0,"down_count":0,"flat_count":0,"limit_up":0,"limit_down":0,"total_volume":0,"north_flow":0}
+
+    async def get_sectors(self, sector_type: str = "industry") -> list[dict]:
+        return []
+
+    async def get_rankings(self, rank_type: str = "up", limit: int = 20) -> list[dict]:
+        return []
+
+    async def get_intraday(self, code: str) -> list[dict]:
+        return []
 
     def __del__(self):
         try:
