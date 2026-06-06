@@ -19,8 +19,8 @@ def _client():
 @router.post("/analyze", response_model=AIResponse)
 async def analyze(req: AnalyzeRequest):
     adapter = get_adapter()
-    quote = await adapter.get_realtime_quote(req.code)
-    klines = await adapter.get_kline(
+    quote = adapter.get_realtime_quote(req.code)
+    klines = adapter.get_kline(
         req.code, date.today() - timedelta(days=req.days), date.today()
     )
     recent = klines[-30:]
@@ -32,7 +32,7 @@ async def analyze(req: AnalyzeRequest):
         name=quote["name"], code=req.code, days=req.days, data=data_text
     )
     response = await _client().chat.completions.create(
-        model="gpt-5.5",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=400,
     )
@@ -42,14 +42,14 @@ async def analyze(req: AnalyzeRequest):
 async def chat(req: ChatRequest):
     messages = [{"role": "user", "content": req.message}]
     if req.symbol_code:
-        quote = await get_adapter().get_realtime_quote(req.symbol_code)
+        quote = get_adapter().get_realtime_quote(req.symbol_code)
         context = (
             f"当前分析标的: {quote['name']}({req.symbol_code})，"
             f"现价 {quote['price']}，涨跌幅 {quote['change_pct']}%"
         )
         messages.insert(0, {"role": "system", "content": context})
     response = await _client().chat.completions.create(
-        model="gpt-5.5",
+        model="gpt-4o",
         messages=messages,
         max_tokens=600,
     )

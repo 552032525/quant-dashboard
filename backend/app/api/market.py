@@ -31,11 +31,7 @@ async def search_symbol(keyword: str = Query(..., min_length=1)):
     try:
         data = await get_adapter().search_symbol(keyword)
         return [
-            SymbolInfo(
-                **item,
-                market="SH" if item["code"].startswith("6") else "SZ",
-                type="stock",
-            )
+            SymbolInfo(**item, market="SH" if item["code"].startswith("6") else "SZ", type="stock")
             for item in data
         ]
     except Exception as e:
