@@ -13,8 +13,10 @@
           <span v-if="m.quote" class="font-mono text-lg" :class="m.quote.change_pct>=0?'text-gain':'text-loss'">{{ m.quote.price?.toFixed(2) }}</span>
           <span v-if="m.quote" class="text-sm font-mono" :class="m.quote.change_pct>=0?'text-gain':'text-loss'">{{ m.quote.change_pct>=0?'+':'' }}{{ m.quote.change_pct?.toFixed(2) }}%</span>
         </div>
+        <div v-if="m.error" class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400 mb-3">{{ m.error }}</div>
         <KLineChart v-if="m.klineData.length" :data="m.klineData" class="h-[calc(100%-3rem)]" />
-        <div v-else class="h-full flex items-center justify-center text-text-secondary">输入股票代码查看 K 线图</div>
+        <div v-else-if="!m.loading" class="h-full flex items-center justify-center text-text-secondary">输入股票代码查看 K 线图</div>
+        <div v-else class="h-full flex items-center justify-center text-text-secondary">加载中...</div>
       </div>
       <aside class="w-72 border-l border-surface-2 p-4 flex flex-col gap-3 overflow-auto">
         <MetricCard label="最新价" :value="m.quote?.price??0" :trend="m.quote?.change_pct>=0?'up':'down'" />

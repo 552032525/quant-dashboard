@@ -1,9 +1,13 @@
-﻿import akshare as ak
+﻿import asyncio
+import akshare as ak
 from datetime import date
 from app.adapters.base import DataSourceAdapter
 
 class AkshareAdapter(DataSourceAdapter):
     async def get_realtime_quote(self, code: str) -> dict:
+        return await asyncio.to_thread(self._get_realtime_quote, code)
+
+    def _get_realtime_quote(self, code: str) -> dict:
         df = ak.stock_zh_a_spot_em()
         row = df[df["代码"] == code]
         if row.empty:
@@ -23,6 +27,9 @@ class AkshareAdapter(DataSourceAdapter):
         }
 
     async def get_kline(self, code: str, start_date: date, end_date: date, period: str = "daily") -> list[dict]:
+        return await asyncio.to_thread(self._get_kline, code, start_date, end_date, period)
+
+    def _get_kline(self, code: str, start_date: date, end_date: date, period: str = "daily") -> list[dict]:
         df = ak.stock_zh_a_hist(
             symbol=code,
             period=period,
@@ -43,6 +50,9 @@ class AkshareAdapter(DataSourceAdapter):
         ]
 
     async def search_symbol(self, keyword: str) -> list[dict]:
+        return await asyncio.to_thread(self._search_symbol, keyword)
+
+    def _search_symbol(self, keyword: str) -> list[dict]:
         df = ak.stock_zh_a_spot_em()
         mask = df["名称"].str.contains(keyword) | df["代码"].str.contains(keyword)
         result = df[mask].head(20)

@@ -8,7 +8,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   market: {
     realtime: (code: string) => request<any>(`/market/realtime/${code}`),
-    kline: (code: string, start?: string, end?: string, period = "daily") => request<any[]>(`/market/kline/${code}?start_date=${start||""}&end_date=${end||""}&period=${period}`),
+    kline: (code: string, start?: string, end?: string, period = "daily") => {
+      const params = new URLSearchParams({ period });
+      if (start) params.set("start_date", start);
+      if (end) params.set("end_date", end);
+      return request<any[]>(`/market/kline/${code}?${params.toString()}`);
+    },
     search: (keyword: string) => request<any[]>(`/market/search?keyword=${encodeURIComponent(keyword)}`),
   },
   portfolio: {
