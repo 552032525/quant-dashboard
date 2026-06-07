@@ -1,177 +1,171 @@
-﻿import akshare as ak
+﻿import requests, re
+import akshare as ak
+import pandas as pd
 from datetime import datetime
+
+SINA_HEADERS = {'Referer': 'https://finance.sina.com.cn'}
+
+# Row indices in stock_financial_abstract (stable ordering)
+
+def _sf(v, d=0.0):
+    try:
+        f = float(v)
+        import pandas as pd, math
+        return d if pd.isna(f) or math.isinf(f) else f
+    except:
+        return d
+
+IDX_NET_PROFIT   = 0
+IDX_REVENUE      = 1
+IDX_EQUITY       = 5
+IDX_GOODWILL     = 6
+IDX_OPERATING_CF = 7
+IDX_EPS          = 8
+IDX_BPS          = 9
+IDX_ROE          = 11
+IDX_DEBT_RATIO   = 16
+IDX_REV_PER_SHARE = 32
 
 class FinancialService:
 
-    def get_financial_overview(self, code: str) -> dict:
-        """获取近5年营收/利润/现金流"""
-        df = ak.stock_financial_abstract(symbol=code)
-        df = df[df["选项"] == "常用指标"].copy()
-        cols = ["指标", "20230331", "20230630", "20230930", "20231231",
-                "20240331", "20240630", "20240930", "20241231",
-                "20250331", "20250630", "20250930", "20251231",
-                "20260331"]
-        available = [c for c in cols if c in df.columns]
-        sub = df[available].copy()
-        revenue_row = sub[sub["指标"] == "营业总收入"]
-        profit_row = sub[sub["指标"] == "归母净利润"]
-        cash_row = sub[sub["指标"] == "经营活动产生的现金流量净额"]
+    def _sina_quote(self, code):
+        prefix = 'sh' + code if code.startswith(('6','9')) else 'sz' + code
+        url = f'http://hq.sinajs.cn/list={prefix}'
+        resp = requests.get(url, headers=SINA_HEADERS, timeout=10)
+        resp.encoding = 'gbk'
+        m = re.search(r'"([^"]*)"', resp.text)
+        if not m:
+            return {'name': code, 'price': 0.0}
+        parts = m.group(1).split(',')
+        return {'name': parts[0], 'price': float(parts[3])}
 
-        dates = [c for c in available if c != "指标"]
+    def _get_df(self, code):
+        return ak.stock_financial_abstract(symbol=code)
+
+    def get_financial_overview(self, code):
+        q = self._sina_quote(code)
+        try:
+            df = self._get_df(code)
+        except:
+            return {'code': code, 'name': q['name'], 'data': []}
+        cols = sorted([c for c in df.columns if str(c).startswith('20')])[-20:]
         result = []
-        for d in dates[-20:]:
-            d_formatted = f"{d[:4]}-{d[4:6]}-{d[6:]}"
-            rev = float(revenue_row[d].iloc[0]) / 1e8 if len(revenue_row) > 0 and revenue_row[d].notna().iloc[0] else 0
-            prf = float(profit_row[d].iloc[0]) / 1e8 if len(profit_row) > 0 and profit_row[d].notna().iloc[0] else 0
-            csh = float(cash_row[d].iloc[0]) / 1e8 if len(cash_row) > 0 and cash_row[d].notna().iloc[0] else 0
-            result.append({"date": d_formatted, "revenue": round(rev, 2), "net_profit": round(prf, 2), "cash_flow": round(csh, 2)})
+        for c in cols:
+            d = f'{c[:4]}-{c[4:6]}-{c[6:]}'
+            try: rev = float(df.iloc[IDX_REVENUE][c]) / 1e8
+            except: rev = 0.0
+            try: prf = float(df.iloc[IDX_NET_PROFIT][c]) / 1e8
+            except: prf = 0.0
+            try: csh = float(df.iloc[IDX_OPERATING_CF][c]) / 1e8
+            except: csh = 0.0
+            result.append({'date': d, 'revenue': round(rev,2), 'net_profit': round(prf,2), 'cash_flow': _sf(round(csh,2))})
+        return {'code': code, 'name': q['name'], 'data': result}
 
-        name = ""
+    def get_valuation(self, code):
+        q = self._sina_quote(code)
+        price = q['price']
+        pe = pb = ps = roe = 0.0
         try:
-            df2 = ak.stock_individual_info_em(symbol=code)
-            name = str(df2[df2["item"] == "股票简称"]["value"].iloc[0])
-        except Exception:
-            name = code
-        return {"code": code, "name": name, "data": result}
-
-    def get_valuation(self, code: str) -> dict:
-        """获取估值指标"""
-        name = code
-        pe = pb = ps = roe = dividend_yield = 0.0
-        row = {}
-        try:
-            df = ak.stock_individual_info_em(symbol=code)
-            row = {r["item"]: r["value"] for _, r in df.iterrows()}
-            name = str(row.get("股票简称", code))
-            pe = float(row.get("市盈率-动态", 0) or 0)
-            pb = float(row.get("市净率", 0) or 0)
-            roe = float(row.get("净资产收益率", 0) or 0)
-            try:
-                div_df = ak.stock_history_dividend_detail(symbol=code, indicator="分红")
-                if len(div_df) > 0:
-                    total_div = float(div_df.iloc[0].get("派息", 0) or 0)
-                    price = float(row.get("最新价", 0) or 0)
-                    if price > 0:
-                        dividend_yield = round(total_div / price * 100, 2)
-            except Exception:
-                pass
-        except Exception:
+            df = self._get_df(code)
+            latest = sorted([c for c in df.columns if str(c).startswith('2025') or str(c).startswith('2026')])[-1]
+            eps = float(df.iloc[IDX_EPS][latest])
+            bps = float(df.iloc[IDX_BPS][latest])
+            rps = float(df.iloc[IDX_REV_PER_SHARE][latest])
+            roe = round(float(df.iloc[IDX_ROE][latest]), 2)
+            pe = round(price / eps, 2) if eps > 0 else 0
+            pb = round(price / bps, 2) if bps > 0 else 0
+            ps = round(price / rps, 2) if rps > 0 else 0
+        except:
             pass
-        try:
-            price = float(row.get("最新价", 0) or 0)
-            total_shares = float(row.get("总股本", 0) or 0)
-            overview = self.get_financial_overview(code)
-            if overview["data"]:
-                latest_rev = overview["data"][-1]["revenue"]
-                if latest_rev > 0 and total_shares > 0:
-                    ps = round((price * total_shares) / (latest_rev * 1e8) * 1e8, 2)
-        except Exception:
-            pass
-        return {"code": code, "name": name, "pe": pe, "pb": pb, "ps": ps,
-                "roe": roe, "dividend_yield": dividend_yield, "industry_pe": 0.0}
+        return {'code': code, 'name': q['name'], 'pe': pe, 'pb': pb, 'ps': ps, 'roe': roe, 'dividend_yield': 0.0, 'industry_pe': 0.0}
 
-    def get_risk(self, code: str) -> dict:
-        """风险筛查"""
-        name = code
-        debt_ratio = pledge_ratio = goodwill_ratio = 0.0
+    def get_risk(self, code):
+        q = self._sina_quote(code)
         risk_items = []
-        cash_flow_health = "关注"
+        debt_ratio = pledge_ratio = goodwill_ratio = 0.0
+        cash_flow_health = 'N/A'
         try:
-            df = ak.stock_financial_abstract(symbol=code)
-            df = df[df["选项"] == "常用指标"].copy()
-            debt_rows = df[df["指标"] == "资产负债率"]
-            if len(debt_rows) > 0:
-                latest_col = sorted([c for c in df.columns if c.startswith("202")])[-1]
-                debt_ratio = float(debt_rows[latest_col].iloc[0]) if debt_rows[latest_col].notna().iloc[0] else 0
-
-            gw_rows = df[df["指标"] == "商誉"]
-            net_rows = df[df["指标"] == "归属于母公司股东权益合计"]
-            if len(gw_rows) > 0 and len(net_rows) > 0:
-                latest_col = sorted([c for c in df.columns if c.startswith("202")])[-1]
-                gw = float(gw_rows[latest_col].iloc[0]) if gw_rows[latest_col].notna().iloc[0] else 0
-                net = float(net_rows[latest_col].iloc[0]) if net_rows[latest_col].notna().iloc[0] else 1
-                goodwill_ratio = round(gw / net * 100, 2) if net > 0 else 0
-
-            cash_rows = df[df["指标"] == "经营活动产生的现金流量净额"]
-            profit_rows = df[df["指标"] == "归母净利润"]
-            if len(cash_rows) > 0 and len(profit_rows) > 0:
-                latest_cols = sorted([c for c in df.columns if c.startswith("202")])[-4:]
-                total_cash = sum(float(cash_rows[c].iloc[0]) for c in latest_cols if cash_rows[c].notna().iloc[0])
-                total_profit = sum(float(profit_rows[c].iloc[0]) for c in latest_cols if profit_rows[c].notna().iloc[0])
-                ratio = round(total_cash / total_profit, 2) if total_profit > 0 else 0
+            df = self._get_df(code)
+            latest = sorted([c for c in df.columns if str(c).startswith('2025') or str(c).startswith('2026')])[-1]
+            debt_ratio = round(float(df.iloc[IDX_DEBT_RATIO][latest]), 2)
+            try:
+                gw = float(df.iloc[IDX_GOODWILL][latest])
+                import math
+                eq = float(df.iloc[IDX_EQUITY][latest])
+                goodwill_ratio = round(gw / eq * 100, 2) if eq > 0 and not math.isnan(gw) else 0
+            except: pass
+            try:
+                recent_cols = sorted([c for c in df.columns if str(c).startswith('2025') or str(c).startswith('2026')])[-4:]
+                total_cf = sum(float(df.iloc[IDX_OPERATING_CF][c]) for c in recent_cols)
+                total_np = sum(float(df.iloc[IDX_NET_PROFIT][c]) for c in recent_cols)
+                ratio = round(total_cf / total_np, 2) if total_np > 0 else 0
                 if ratio > 1:
-                    cash_flow_health = "健康"
+                    cash_flow_health = '\u5065\u5eb7'
                 elif ratio > 0.5:
-                    cash_flow_health = "关注"
+                    cash_flow_health = '\u5173\u6ce8'
                 else:
-                    cash_flow_health = "预警"
-                    risk_items.append(f"经营现金流/净利润比仅{ratio}，利润含金量不足")
-
+                    cash_flow_health = '\u9884\u8b66'
+                    risk_items.append(f'\u7ecf\u8425\u73b0\u91d1\u6d41/\u51c0\u5229\u6da6\u6bd4\u4ec5{ratio}\uff0c\u5229\u6da6\u542b\u91d1\u91cf\u4e0d\u8db3')
+            except: pass
             try:
                 pledge_df = ak.stock_gpzy_pledge_ratio_em()
-                pledge_row = pledge_df[pledge_df["股票代码"] == code]
+                code_col = pledge_df.columns[0]
+                pledge_row = pledge_df[pledge_df[code_col] == code]
                 if len(pledge_row) > 0:
-                    pledge_ratio = float(pledge_row.iloc[0]["质押比例"]) if pledge_row["质押比例"].notna().iloc[0] else 0
-            except Exception:
-                pass
-
-            try:
-                info = ak.stock_individual_info_em(symbol=code)
-                name = str(info[info["item"] == "股票简称"]["value"].iloc[0])
-            except Exception:
-                name = code
-
+                    ratio_col = pledge_df.columns[1]
+                    pledge_ratio = float(pledge_row.iloc[0][ratio_col])
+            except: pass
         except Exception as e:
-            return {"code": code, "name": name, "debt_ratio": 0, "pledge_ratio": 0,
-                    "cash_flow_health": "关注", "goodwill_ratio": 0,
-                    "risk_level": "中", "risk_items": [f"数据获取异常: {e}"]}
+            risk_items.append(f'\u6570\u636e\u83b7\u53d6\u5f02\u5e38: {e}')
 
         if debt_ratio > 70:
-            risk_items.append(f"资产负债率 {debt_ratio}%，偏高")
+            risk_items.append(f'\u8d44\u4ea7\u8d1f\u503a\u7387 {debt_ratio}%\uff0c\u504f\u9ad8')
         elif debt_ratio > 50:
-            risk_items.append(f"资产负债率 {debt_ratio}%，适中")
+            risk_items.append(f'\u8d44\u4ea7\u8d1f\u503a\u7387 {debt_ratio}%\uff0c\u9002\u4e2d')
 
         if goodwill_ratio > 30:
-            risk_items.append(f"商誉占净资产 {goodwill_ratio}%，减值风险高")
+            risk_items.append(f'\u5546\u8a89\u5360\u51c0\u8d44\u4ea7 {goodwill_ratio}%\uff0c\u51cf\u503c\u98ce\u9669\u9ad8')
         elif goodwill_ratio > 10:
-            risk_items.append(f"商誉占净资产 {goodwill_ratio}%，需关注")
+            risk_items.append(f'\u5546\u8a89\u5360\u51c0\u8d44\u4ea7 {goodwill_ratio}%\uff0c\u9700\u5173\u6ce8')
 
         if pledge_ratio > 30:
-            risk_items.append(f"质押比例 {pledge_ratio}%，偏高")
+            risk_items.append(f'\u8d28\u62bc\u6bd4\u4f8b {pledge_ratio}%\uff0c\u504f\u9ad8')
 
-        risk_count = len([r for r in risk_items if "预警" in cash_flow_health or "偏高" in r or "减值" in r or "含金量" in r])
+        risk_count = 0
+        for r in risk_items:
+            if any(w in r for w in ['\u9884\u8b66','\u504f\u9ad8','\u51cf\u503c','\u542b\u91d1\u91cf']):
+                risk_count += 1
         if risk_count >= 2:
-            risk_level = "高"
+            risk_level = '\u9ad8'
         elif risk_count >= 1:
-            risk_level = "中"
+            risk_level = '\u4e2d'
         else:
-            risk_level = "低"
+            risk_level = '\u4f4e'
 
-        return {"code": code, "name": name, "debt_ratio": debt_ratio, "pledge_ratio": pledge_ratio,
-                "cash_flow_health": cash_flow_health, "goodwill_ratio": goodwill_ratio,
-                "risk_level": risk_level, "risk_items": risk_items}
+        return {'code': code, 'name': q['name'], 'debt_ratio': debt_ratio, 'pledge_ratio': pledge_ratio, 'cash_flow_health': cash_flow_health, 'goodwill_ratio': goodwill_ratio, 'risk_level': risk_level, 'risk_items': risk_items}
 
-    def get_holders(self, code: str) -> dict:
-        """获取十大股东"""
-        name = code
+    def get_holders(self, code):
+        q = self._sina_quote(code)
         holders = []
         try:
-            df = ak.stock_gdfx_top_10_em(date=datetime.now().strftime("%Y%m%d"))
-            sub = df[df["代码"] == code]
-            if len(sub) > 0:
-                name = str(sub.iloc[0].get("名称", code))
-                for _, row in sub.iterrows():
-                    holders.append({
-                        "name": str(row.get("股东名称", "")),
-                        "ratio": float(row.get("持股比例", 0) or 0),
-                        "change": str(row.get("变动方向", "不变")),
-                    })
-        except Exception:
-            pass
-        return {"code": code, "name": name, "top_holders": holders, "institution_change": "暂无数据"}
+            df = ak.stock_gdfx_top_10_em(date=datetime.now().strftime('%Y%m%d'))
+            sub = df[df.iloc[:,0] == code]
+            for _, row in sub.iterrows():
+                holders.append({
+                    'name': str(row.iloc[1]) if len(row) > 1 else '',
+                    'ratio': float(row.iloc[2]) if len(row) > 2 and pd.notna(row.iloc[2]) else 0,
+                    'change': str(row.iloc[3]) if len(row) > 3 else '\u4e0d\u53d8',
+                })
+        except: pass
+        return {'code': code, 'name': q['name'], 'top_holders': holders, 'institution_change': '\u6682\u65e0\u6570\u636e'}
 
 
 _financial_service = FinancialService()
 
-def get_financial_service() -> FinancialService:
+def get_financial_service():
     return _financial_service
+
+# test
+if __name__ == '__main__':
+    s = FinancialService()
+    print(s.get_valuation('600519'))
