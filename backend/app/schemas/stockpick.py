@@ -14,6 +14,7 @@ class FactorFilter(BaseModel):
     revenue_growth_min: float = 0
     debt_ratio_max: float = 90
     industry: str = ""
+    mode: str = "simple"
 
 
 class StockCandidate(BaseModel):
@@ -74,3 +75,30 @@ class StrategyInfo(BaseModel):
     name: str
     description: str
     params: list[dict]
+
+
+
+# ========== 策略对比 ==========
+class CompareRequest(BaseModel):
+    code: str
+    strategies: list[str] = ["ma_cross", "momentum", "mean_reversion"]
+    start_date: str = "2025-01-01"
+    end_date: str = "2026-06-08"
+
+
+class StrategyResult(BaseModel):
+    strategy: str
+    strategy_name: str
+    total_return: float
+    annual_return: float
+    max_drawdown: float
+    sharpe: float
+    win_rate: float
+    trade_count: int
+    nav_curve: list[dict]
+
+
+class CompareResult(BaseModel):
+    code: str
+    name: str
+    results: list[StrategyResult]

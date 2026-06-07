@@ -1,4 +1,4 @@
-﻿import os
+from pathlib import Path
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -9,7 +9,19 @@ class Settings(BaseSettings):
     data_source: str = "web"
     llm_model: str = "deepseek-chat"
 
+    
+    # 邮件通知配置
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = "Quant Dashboard"
+
+    notification_enabled: bool = False
+
     class Config:
-        env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
+        env_file = str(Path(__file__).resolve().parents[3] / ".env")
+        extra = "ignore"
 
 settings = Settings()

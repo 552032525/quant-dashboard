@@ -22,6 +22,8 @@ export const api = {
     intraday: (code: string) => request<any[]>(`/market/intraday/${code}`),
     depth: (code: string) => request<any>(`/market/depth/${code}`),
     wsUrl: (code: string) => `ws://localhost:8000/api/market/ws/${code}`,
+    breadth: () => request<any>("/market/breadth"),
+    indexHistory: (days = 30) => request<any>(`/market/index-history?days=${days}`),
   },
   portfolio: {
     list: () => request<any[]>("/portfolio"),
@@ -79,6 +81,7 @@ export const api = {
     screen: (filters: any) => request<any>("/stockpick/screen", { method: "POST", body: JSON.stringify(filters) }),
     backtest: (params: any) => request<any>("/stockpick/backtest", { method: "POST", body: JSON.stringify(params) }),
     strategies: () => request<any[]>("/stockpick/strategies"),
+    compare: (params: any) => request<any>("/stockpick/compare", { method: "POST", body: JSON.stringify(params) }),
   },
   risk: {
     checkStock: (code: string) => request<any>(`/risk/stock/${code}`),
@@ -103,5 +106,11 @@ export const api = {
     checkAlerts: () => request<any[]>("/monitor/check"),
     summary: () => request<any>("/monitor/summary"),
     positionRisk: () => request<any[]>("/monitor/position-risk"),
+  },
+  behavior: {
+    analysis: (code?: string) => {
+      const params = code ? `?symbol_code=${encodeURIComponent(code)}` : '';
+      return request<any>(`/behavior/analysis${params}`);
+    },
   },
 };

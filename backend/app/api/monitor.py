@@ -1,138 +1,150 @@
-﻿from fastapi import APIRouter, HTTPException
+﻿from fastapi import APIRouter, HTTPException, Depends
 from app.adapters import get_adapter
 from datetime import datetime
-import requests, re, logging
+import logging
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_db
+from app.models.watchlist import WatchlistItem
+from app.models.alert import Alert
+from app.models.symbol import Symbol, Market, SymbolType
 from app.schemas.monitor import AlertRule, AlertEvent, WatchItem, MonitorSummary, PositionRiskAlert
+from app.core.sina_utils import sina_quote
 
 logger = logging.getLogger(__name__)
-SINA_HEADERS = {"Referer": "https://finance.sina.com.cn"}
 router = APIRouter(prefix="/monitor")
 
-# 简易内存存储（生产环境应用数据库）
-_alerts: list[dict] = []
-_watchlist: list[str] = []
 
 
-def _sina_quote(code: str) -> dict:
-    prefix = "sh" + code if code.startswith(("6", "9")) else "sz" + code
-    try:
-        resp = requests.get(f"http://hq.sinajs.cn/list={prefix}", headers=SINA_HEADERS, timeout=5)
-        resp.encoding = "gbk"
-        m = re.search(r'"([^"]*)"', resp.text)
-        if m:
-            parts = m.group(1).split(",")
-            if len(parts) >= 4:
-                price = float(parts[3]) if parts[3] else 0
-                prev = float(parts[2]) if parts[2] else 0
-                chg = (price - prev) / prev * 100 if prev > 0 else 0
-                return {"name": parts[0], "price": price, "change_pct": round(chg, 2)}
-    except Exception:
-        logger.warning(f"新浪行情获取失败: {code}")
-    return {"name": code, "price": 0, "change_pct": 0}
+def _code_market(code: str) -> Market:
+    """根据代码前缀判断交易所"""
+    return Market.SH if code.startswith(("6", "9")) else Market.SZ
+
+
+async def _get_or_create_symbol(db: AsyncSession, code: str, name: str = "") -> Symbol:
+    """查找或创建 Symbol 记录"""
+    result = await db.execute(select(Symbol).where(Symbol.code == code))
+    symbol = result.scalar_one_or_none()
+    if not symbol:
+        symbol = Symbol(
+            code=code,
+            name=name or code,
+            market=_code_market(code),
+            type=SymbolType.STOCK,
+        )
+        db.add(symbol)
+        await db.flush()
+    return symbol
+
+
+def _parse_condition(condition: str) -> tuple[str, str]:
+    """解析 condition 字段为 (type, direction)"""
+    if ":" in condition:
+        alert_type, direction = condition.split(":", 1)
+        return alert_type, direction
+    return condition, "above"
+
+
+def _encode_condition(alert_type: str, direction: str) -> str:
+    """编码 type 和 direction 到 condition 字段"""
+    if alert_type == "price_break" and direction:
+        return f"{alert_type}:{direction}"
+    return alert_type
+
+
+async def _do_check_alerts(db: AsyncSession) -> list[AlertEvent]:
+    """检查所有提醒触发条件（内部函数）"""
+    events: list[AlertEvent] = []
+    now = datetime.now().strftime("%H:%M:%S")
+    result = await db.execute(
+        select(Alert, Symbol)
+        .join(Symbol, Alert.symbol_id == Symbol.id)
+        .where(Alert.enabled == True)
+    )
+    rows = result.all()
+    for alert, symbol in rows:
+        q = sina_quote(symbol.code)
+        triggered = False
+        message = ""
+        alert_type, direction = _parse_condition(alert.condition)
+
+        if alert_type == "price_break":
+            if direction == "above" and q["price"] >= alert.threshold:
+                triggered = True
+                message = f"{symbol.name} 突破 {alert.threshold}，现价 {q['price']}"
+            elif direction == "below" and q["price"] <= alert.threshold:
+                triggered = True
+                message = f"{symbol.name} 跌破 {alert.threshold}，现价 {q['price']}"
+        elif alert_type == "change_pct":
+            if abs(q["change_pct"]) >= alert.threshold:
+                triggered = True
+                dir_label = "上涨" if q["change_pct"] > 0 else "下跌"
+                message = f"{symbol.name} {dir_label}{abs(q['change_pct'])}%"
+
+        if triggered:
+            events.append(AlertEvent(
+                code=symbol.code, name=symbol.name,
+                type=alert_type, message=message,
+                time=now, current_value=q["price"],
+            ))
+    return events
 
 
 @router.get("/watchlist", response_model=list[WatchItem])
-async def get_watchlist():
-    items = []
-    for code in _watchlist:
-        q = _sina_quote(code)
-        alert_cnt = sum(1 for a in _alerts if a["code"] == code and a["enabled"])
+async def get_watchlist(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(WatchlistItem, Symbol)
+        .join(Symbol, WatchlistItem.symbol_id == Symbol.id)
+        .order_by(WatchlistItem.sort_order)
+    )
+    rows = result.all()
+    items: list[WatchItem] = []
+    for wi, symbol in rows:
+        q = sina_quote(symbol.code)
+        alert_cnt_result = await db.execute(
+            select(Alert).where(Alert.symbol_id == symbol.id, Alert.enabled == True)
+        )
+        alert_cnt = len(alert_cnt_result.scalars().all())
         items.append(WatchItem(
-            code=code, name=q["name"], price=q["price"],
+            code=symbol.code, name=q["name"], price=q["price"],
             change_pct=q["change_pct"], alert_count=alert_cnt,
-            sort_order=_watchlist.index(code),
+            sort_order=wi.sort_order,
         ))
     return items
 
 
 @router.post("/watchlist/{code}")
-async def add_to_watchlist(code: str):
-    if code in _watchlist:
+async def add_to_watchlist(code: str, db: AsyncSession = Depends(get_db)):
+    q = sina_quote(code)
+    symbol = await _get_or_create_symbol(db, code, q["name"])
+    result = await db.execute(select(WatchlistItem).where(WatchlistItem.symbol_id == symbol.id))
+    if result.scalar_one_or_none():
         return {"ok": True, "code": code, "added": False, "message": f"股票 {code} 已在自选列表中"}
-    _watchlist.append(code)
+    max_result = await db.execute(
+        select(WatchlistItem.sort_order).order_by(WatchlistItem.sort_order.desc()).limit(1)
+    )
+    max_order = max_result.scalar() or -1
+    wi = WatchlistItem(symbol_id=symbol.id, sort_order=max_order + 1)
+    db.add(wi)
+    await db.commit()
     return {"ok": True, "code": code, "added": True, "message": f"股票 {code} 已添加到自选列表"}
 
 
 @router.delete("/watchlist/{code}")
-async def remove_from_watchlist(code: str):
-    if code in _watchlist:
-        _watchlist.remove(code)
+async def remove_from_watchlist(code: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Symbol).where(Symbol.code == code))
+    symbol = result.scalar_one_or_none()
+    if not symbol:
+        return {"ok": True, "code": code, "removed": False, "message": f"股票 {code} 不在自选列表中"}
+    wi_result = await db.execute(select(WatchlistItem).where(WatchlistItem.symbol_id == symbol.id))
+    wi = wi_result.scalar_one_or_none()
+    if wi:
+        await db.delete(wi)
+        await db.commit()
         return {"ok": True, "code": code, "removed": True, "message": f"股票 {code} 已从自选列表移除"}
     return {"ok": True, "code": code, "removed": False, "message": f"股票 {code} 不在自选列表中"}
 
 
-@router.get("/alerts", response_model=list[AlertRule])
-async def get_alerts():
-    return [AlertRule(**a) for a in _alerts]
-
-
-@router.post("/alerts", response_model=AlertRule)
-async def create_alert(rule: AlertRule):
-    q = _sina_quote(rule.code)
-    alert = {
-        "id": len(_alerts) + 1,
-        "code": rule.code,
-        "name": q["name"],
-        "type": rule.type,
-        "threshold": rule.threshold,
-        "direction": rule.direction,
-        "enabled": rule.enabled,
-    }
-    _alerts.append(alert)
-    return AlertRule(**alert)
-
-
-@router.delete("/alerts/{alert_id}")
-async def delete_alert(alert_id: int):
-    global _alerts
-    _alerts = [a for a in _alerts if a["id"] != alert_id]
-    return {"ok": True}
-
-
-@router.get("/check", response_model=list[AlertEvent])
-async def check_alerts():
-    """检查所有提醒触发条件"""
-    events = []
-    now = datetime.now().strftime("%H:%M:%S")
-    for alert in _alerts:
-        if not alert["enabled"]:
-            continue
-        q = _sina_quote(alert["code"])
-        triggered = False
-        message = ""
-
-        if alert["type"] == "price_break":
-            if alert["direction"] == "above" and q["price"] >= alert["threshold"]:
-                triggered = True
-                message = f"{alert['name']} 突破 {alert['threshold']}，现价 {q['price']}"
-            elif alert["direction"] == "below" and q["price"] <= alert["threshold"]:
-                triggered = True
-                message = f"{alert['name']} 跌破 {alert['threshold']}，现价 {q['price']}"
-        elif alert["type"] == "change_pct":
-            if abs(q["change_pct"]) >= alert["threshold"]:
-                triggered = True
-                direction = "上涨" if q["change_pct"] > 0 else "下跌"
-                message = f"{alert['name']} {direction}{abs(q['change_pct'])}%"
-
-        if triggered:
-            events.append(AlertEvent(
-                code=alert["code"], name=alert["name"],
-                type=alert["type"], message=message,
-                time=now, current_value=q["price"],
-            ))
-
-    return events
-
-
-@router.get("/summary", response_model=MonitorSummary)
-async def get_summary():
-    events = await check_alerts()
-    return MonitorSummary(
-        active_alerts=sum(1 for a in _alerts if a["enabled"]),
-        triggered_today=len(events),
-        watchlist_count=len(_watchlist),
-        recent_events=events,
-    )
 # ── 仓位风险检查 ──────────────────────────────────────────
 @router.get("/position-risk", response_model=list[PositionRiskAlert])
 async def check_position_risk():
@@ -209,3 +221,68 @@ async def check_position_risk():
 
     return alerts
 
+
+@router.get("/alerts", response_model=list[AlertRule])
+async def get_alerts(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Alert, Symbol).join(Symbol, Alert.symbol_id == Symbol.id))
+    rows = result.all()
+    alerts: list[AlertRule] = []
+    for alert, symbol in rows:
+        alert_type, direction = _parse_condition(alert.condition)
+        alerts.append(AlertRule(
+            id=alert.id, code=symbol.code, name=symbol.name,
+            type=alert_type, threshold=alert.threshold,
+            direction=direction, enabled=alert.enabled,
+        ))
+    return alerts
+
+
+@router.post("/alerts", response_model=AlertRule)
+async def create_alert(rule: AlertRule, db: AsyncSession = Depends(get_db)):
+    q = sina_quote(rule.code)
+    symbol = await _get_or_create_symbol(db, rule.code, q["name"])
+    alert = Alert(
+        symbol_id=symbol.id,
+        condition=_encode_condition(rule.type, rule.direction),
+        threshold=rule.threshold,
+        enabled=rule.enabled,
+    )
+    db.add(alert)
+    await db.commit()
+    await db.refresh(alert)
+    return AlertRule(
+        id=alert.id, code=symbol.code, name=symbol.name,
+        type=rule.type, threshold=alert.threshold,
+        direction=rule.direction, enabled=alert.enabled,
+    )
+
+
+@router.delete("/alerts/{alert_id}")
+async def delete_alert(alert_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    alert = result.scalar_one_or_none()
+    if alert:
+        await db.delete(alert)
+        await db.commit()
+    return {"ok": True}
+
+
+@router.get("/check", response_model=list[AlertEvent])
+async def check_alerts(db: AsyncSession = Depends(get_db)):
+    """检查所有提醒触发条件"""
+    return await _do_check_alerts(db)
+
+
+@router.get("/summary", response_model=MonitorSummary)
+async def get_summary(db: AsyncSession = Depends(get_db)):
+    events = await _do_check_alerts(db)
+    enabled_result = await db.execute(select(Alert).where(Alert.enabled == True))
+    active_alerts = len(enabled_result.scalars().all())
+    wl_result = await db.execute(select(WatchlistItem))
+    watchlist_count = len(wl_result.scalars().all())
+    return MonitorSummary(
+        active_alerts=active_alerts,
+        triggered_today=len(events),
+        watchlist_count=watchlist_count,
+        recent_events=events,
+    )

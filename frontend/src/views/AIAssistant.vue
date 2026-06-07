@@ -1,13 +1,13 @@
 ﻿<template>
-  <div class="p-6 max-w-7xl mx-auto h-full overflow-auto">
+  <div class="p-3 md:p-6 max-w-7xl mx-auto h-full overflow-auto">
     <h2 class="text-xl font-semibold text-white mb-6">🤖 AI 智能助手</h2>
 
-    <div class="flex gap-1 mb-6 bg-[#0f1a2e] rounded-lg p-1 inline-flex">
-      <button v-for="t in tabs" :key="t.key" @click="tab=t.key" :class="tab===t.key?'bg-[#0052ff] text-white':'text-[#8fa5c6] hover:text-white'" class="px-4 py-1.5 rounded-md text-sm transition-colors">{{ t.label }}</button>
+    <div class="flex flex-wrap gap-1 mb-6 bg-[#0f1a2e] rounded-lg p-1 inline-flex">
+      <button v-for="t in tabs" :key="t.key" @click="tab=t.key" :class="tab===t.key?'bg-[#0052ff] text-white':'text-[#8fa5c6] hover:text-white'" class="px-4 py-1.5 rounded-md text-xs md:text-sm transition-colors">{{ t.label }}</button>
     </div>
 
     <!-- AI 对话 -->
-    <div v-show="tab==='chat'" class="h-full flex flex-col" style="max-height:calc(100vh - 160px)">
+    <div v-show="tab==='chat'" class="h-full flex flex-col max-h-[50vh] md:max-h-[calc(100vh-160px)]">
       <div class="flex gap-2 items-center mb-3">
         <input v-model="chatCode" placeholder="可选: 股票代码" class="bg-[#132438] text-white px-3 py-2 rounded-lg text-sm w-28 border border-[#1a314a] outline-none" />
       </div>
@@ -48,8 +48,8 @@
 
     <!-- 个股调研 -->
     <div v-show="tab==='research'" class="space-y-4">
-      <div class="flex gap-3">
-        <input v-model="researchCode" @keyup.enter="genResearch" placeholder="股票代码" class="bg-[#132438] text-white px-3 py-2 rounded-lg text-sm w-36 border border-[#1a314a] outline-none" />
+      <div class="flex flex-col md:flex-row gap-3">
+        <input v-model="researchCode" @keyup.enter="genResearch" placeholder="股票代码" class="bg-[#132438] text-white px-3 py-2 rounded-lg text-sm w-full md:w-36 border border-[#1a314a] outline-none" />
         <button @click="genResearch" :disabled="loading" class="bg-[#0052ff] text-white px-4 py-2 rounded-full text-sm hover:opacity-90">生成调研报告</button>
       </div>
       <div v-if="stockReview" class="bg-[#0f1a2e] rounded-lg border border-[#1a314a] p-5 space-y-3">
@@ -111,3 +111,5 @@ function ratingBadge(r:string) {
   return "bg-[#f59e0b]/20 text-[#f59e0b]";
 }
 </script>
+
+

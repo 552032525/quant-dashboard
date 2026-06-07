@@ -1,16 +1,36 @@
 ﻿<template>
   <div class="h-full flex flex-col">
-    <IndexBar :data="m.indexQuotes" />
+    <IndexBar :data="m.indexQuotes" :breadth="breadthData" />
     <div v-if="m.indexError" class="text-xs text-[#cf202f] px-4 py-1 bg-[#cf202f]/10">{{ m.indexError }}</div>
+    <!-- 指数历史走势迷你图 -->
+    <div v-if="indexHistoryData && Object.keys(indexHistoryData).length" class="px-4 py-2 bg-surface border-b border-surface-2">
+      <div class="text-xs text-text-secondary mb-2">指数近期走势</div>
+      <div class="flex gap-4">
+        <div v-for="(item, code) in indexHistoryData" :key="code" class="flex-1 bg-surface-2 rounded px-3 py-2">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-xs text-text-secondary">{{ item.name }}</span>
+            <span class="text-xs font-mono" :class="getTrendClass(item.data)">{{ getTrendLabel(item.data) }}</span>
+          </div>
+          <svg :viewBox="'0 0 ' + sparkWidth + ' 40'" class="w-full h-10">
+            <polyline
+              :points="sparkPoints(item.data, sparkWidth, 40)"
+              fill="none"
+              :stroke="getTrendColor(item.data)"
+              stroke-width="1.5"
+            />
+          </svg>
+        </div>
+      </div>
+    </div>
     <HeatBar :data="m.heat" />
     <div v-if="m.heatError" class="text-xs text-[#cf202f] px-4 py-1 bg-[#cf202f]/10">{{ m.heatError }}</div>
-    <div class="flex-1 flex overflow-hidden">
+    <div class="flex-1 flex flex-col lg:flex-row overflow-hidden">
       <div class="flex-1 border-r border-[#1a314a]">
         <SectorHeatmap :data="m.sectors" :type="sectorType"
           @toggle="sectorType = sectorType === 'industry' ? 'concept' : 'industry'; m.fetchSectors(sectorType)" />
         <div v-if="m.sectorsError" class="text-xs text-[#cf202f] px-3 py-1">{{ m.sectorsError }}</div>
       </div>
-      <div class="w-80 flex flex-col">
+      <div class="w-full lg:w-80 flex flex-col">
         <div class="flex-1 overflow-auto">
           <RankingList :data="m.rankings" :rankType="rankType"
             @toggle="rankType = rankType === 'up' ? 'down' : 'up'; m.fetchRankings(rankType)"
@@ -92,7 +112,52 @@ async function removeWatch(code: string) {
   }
 }
 
+// 市场广度 + 指数历史
+const breadthData = ref<any>(null);
+const indexHistoryData = ref<any>(null);
+const sparkWidth = 160;
+
+async function loadMarketExtras() {
+  try { breadthData.value = await api.market.breadth(); } catch (e) { /* 静默降级 */ }
+  try { indexHistoryData.value = await api.market.indexHistory(30); } catch (e) { /* 静默降级 */ }
+}
+
+function sparkPoints(data: any[], w: number, h: number): string {
+  if (!data || data.length < 2) return "";
+  const closes = data.map(d => d.close);
+  const min = Math.min(...closes);
+  const max = Math.max(...closes);
+  const range = max - min || 1;
+  const padding = 2;
+  const xStep = (w - padding * 2) / (closes.length - 1);
+  return closes.map((v, i) => {
+    const x = padding + i * xStep;
+    const y = h - padding - ((v - min) / range) * (h - padding * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+}
+
+function getTrendLabel(data: any[]): string {
+  if (!data || data.length < 2) return "—";
+  const first = data[0].close;
+  const last = data[data.length - 1].close;
+  const pct = ((last - first) / first * 100);
+  return (pct >= 0 ? "+" : "") + pct.toFixed(2) + "%";
+}
+
+function getTrendClass(data: any[]): string {
+  if (!data || data.length < 2) return "text-text-secondary";
+  const first = data[0].close;
+  const last = data[data.length - 1].close;
+  return last >= first ? "text-gain" : "text-loss";
+}
+
+function getTrendColor(data: any[]): string {
+  if (!data || data.length < 2) return "#8fa5c6";
+  return data[0].close <= data[data.length - 1].close ? "#05b169" : "#cf202f";
+}
+
 onMounted(async () => {
-  await Promise.all([m.fetchIndex(), m.fetchHeat(), m.fetchSectors("industry"), m.fetchRankings("up"), loadWatchlist()]);
+  await Promise.all([m.fetchIndex(), m.fetchHeat(), m.fetchSectors("industry"), m.fetchRankings("up"), loadWatchlist(), loadMarketExtras()]);
 });
 </script>

@@ -1,38 +1,18 @@
-﻿import requests, re, math, json
+﻿import requests, math, json
 import logging
 from datetime import date, datetime, timedelta
 from openai import OpenAI
 from app.core.config import settings
-
-SINA_HEADERS = {"Referer": "https://finance.sina.com.cn"}
-
-
-def _prefix(code: str) -> str:
-    if code.startswith(("8", "4")) or (len(code) == 6 and code.startswith("92")):
-        return "bj" + code
-    if code.startswith(("6", "9")):
-        return "sh" + code
-    return "sz" + code
-
-
-def _sina_name(code: str) -> str:
-    prefix = "sh" + code if code.startswith(("6", "9")) else "sz" + code
-    try:
-        resp = requests.get(f"http://hq.sinajs.cn/list={prefix}", headers=SINA_HEADERS, timeout=10)
-        resp.encoding = "gbk"
-        m = re.search(r'"([^"]*)"', resp.text)
-        if m: return m.group(1).split(",")[0]
-    except Exception: pass
-    return code
+from app.core.sina_utils import sina_quote
 
 
 class StockPickService:
 
-    # ─── 多因子选股 ─────────────────────────────────────────
+    # ========== 多因子选股 ==========
     def screen_stocks(self, filters: dict) -> list[dict]:
-        """基于简单规则的多因子筛选"""
+        """基于简单规则的多因子筛选，支持 simple / volume_break / breakout 模式"""
+        mode = filters.get("mode", "simple")
         candidates = []
-        # 使用预设的候选池（避免全市场扫描）
         pool = [
             ("600519", "贵州茅台"), ("000858", "五粮液"), ("300750", "宁德时代"),
             ("601318", "中国平安"), ("000333", "美的集团"), ("600036", "招商银行"),
@@ -46,61 +26,95 @@ class StockPickService:
             ("002352", "顺丰控股"), ("300124", "汇川技术"), ("000063", "中兴通讯"),
         ]
 
-        for code, name in pool:
-            try:
-                score = 0
-                pe, pb, roe, mcap = 0, 0, 0, 0
+        if mode == "simple":
+            for code, _name in pool:
+                try:
+                    score = 0
+                    pe, pb, roe, mcap = 0, 0, 0, 0
 
-                # 从新浪获取实时数据做简单筛选
-                resp = requests.get(
-                    f"http://hq.sinajs.cn/list={_prefix(code)}",
-                    headers=SINA_HEADERS, timeout=5
-                )
-                resp.encoding = "gbk"
-                m = re.search(r'"([^"]*)"', resp.text)
-                if not m: continue
-                parts = m.group(1).split(",")
-                if len(parts) < 10: continue
+                    q = sina_quote(code)
+                    price = q["price"]
+                    change_pct = q["change_pct"]
+                    name = q["name"]
+                    if price <= 0:
+                        continue
 
-                price = float(parts[3]) if parts[3] else 0
-                if price <= 0: continue
+                    if change_pct > 2:
+                        score += 3
+                    elif change_pct > 0:
+                        score += 1
+                    elif change_pct < -2:
+                        score -= 2
 
-                change_pct = 0
-                if len(parts) > 4 and parts[2]:
-                    prev_close = float(parts[2])
-                    if prev_close > 0:
-                        change_pct = (price - prev_close) / prev_close * 100
+                    candidates.append({
+                        "code": code, "name": name,
+                        "pe": pe, "pb": pb, "roe": roe,
+                        "market_cap": mcap, "score": max(0, score),
+                    })
+                except Exception:
+                    continue
 
-                # 趋势得分
-                if change_pct > 2: score += 3
-                elif change_pct > 0: score += 1
-                elif change_pct < -2: score -= 2
+        elif mode == "volume_break":
+            for code, name in pool:
+                try:
+                    kline = self._get_kline(code,
+                        (date.today() - timedelta(days=60)).strftime("%Y-%m-%d"),
+                        date.today().strftime("%Y-%m-%d"))
+                    if len(kline) < 20:
+                        continue
 
-                # PE/PB 等需要额外接口，此处用简化的打分逻辑
-                # 实际应用中可接入 akshare 的 stock_a_lg_indicator
+                    recent_5 = kline[-5:]
+                    prev_20 = kline[-20:]
+                    avg_vol_5 = sum(k["volume"] for k in recent_5) / 5
+                    avg_vol_20 = sum(k["volume"] for k in prev_20) / 20
 
-                candidates.append({
-                    "code": code, "name": name,
-                    "pe": pe, "pb": pb, "roe": roe,
-                    "market_cap": mcap, "score": max(0, score),
-                })
-            except Exception:
-                continue
+                    today_close = kline[-1]["close"]
+                    yesterday_close = kline[-2]["close"]
+                    change_pct = (today_close - yesterday_close) / yesterday_close * 100
 
-        # 按得分排序
+                    if avg_vol_5 > avg_vol_20 * 1.5 and change_pct > 2:
+                        score = min(10, int(change_pct) + int(avg_vol_5 / avg_vol_20 * 2))
+                        candidates.append({
+                            "code": code, "name": name, "score": score,
+                            "pe": 0, "pb": 0, "roe": 0, "market_cap": 0,
+                        })
+                except Exception:
+                    continue
+
+        elif mode == "breakout":
+            for code, name in pool:
+                try:
+                    kline = self._get_kline(code,
+                        (date.today() - timedelta(days=60)).strftime("%Y-%m-%d"),
+                        date.today().strftime("%Y-%m-%d"))
+                    if len(kline) < 20:
+                        continue
+
+                    today_close = kline[-1]["close"]
+                    high_20 = max(k["close"] for k in kline[-21:-1])
+
+                    if today_close > high_20:
+                        breakout_pct = (today_close - high_20) / high_20 * 100
+                        score = min(10, int(breakout_pct * 2) + 5)
+                        candidates.append({
+                            "code": code, "name": name, "score": score,
+                            "pe": 0, "pb": 0, "roe": 0, "market_cap": 0,
+                        })
+                except Exception:
+                    continue
+
         candidates.sort(key=lambda x: x["score"], reverse=True)
         return candidates[:20]
 
-    # ─── 策略回测 ───────────────────────────────────────────
+    # ========== 策略回测 ==========
     def run_backtest(self, params: dict) -> dict:
         """简单策略回测引擎"""
         code = params.get("code", "600519")
         strategy = params.get("strategy", "ma_cross")
         start = params.get("start_date", "2025-01-01")
         end = params.get("end_date", "2026-01-01")
-        name = _sina_name(code)
+        name = sina_quote(code)["name"]
 
-        # 获取历史K线
         kline = self._get_kline(code, start, end)
         if len(kline) < 50:
             return {
@@ -113,7 +127,7 @@ class StockPickService:
         closes = [k["close"] for k in kline]
         dates = [k["date"] for k in kline]
 
-        # 生成信号
+        # --- 生成信号 ---
         signals = [0] * len(closes)  # 0=持有, 1=买入, -1=卖出
         if strategy == "ma_cross":
             short_n = params.get("ma_short", 5)
@@ -134,8 +148,45 @@ class StockPickService:
                     signals[i] = 1
                 elif momentum < -0.03:
                     signals[i] = -1
+        elif strategy == "grid":
+            grid_count = params.get("grid_count", 10)
+            low = min(closes)
+            high = max(closes)
+            if high <= low:
+                pass
+            else:
+                step = (high - low) / grid_count
+                prev_action = 0
+                for i, price in enumerate(closes):
+                    grid_level = int((price - low) / step) if step > 0 else 0
+                    if prev_action == 0:
+                        signals[i] = 1 if grid_level <= 1 else 0
+                    elif grid_level > prev_action:
+                        signals[i] = -1  # 上涨卖出一个网格
+                    elif grid_level < prev_action:
+                        signals[i] = 1   # 下跌买入一个网格
+                    if signals[i] != 0:
+                        prev_action = grid_level
+        elif strategy == "mean_reversion":
+            boll_period = params.get("boll_period", 20)
+            ma = self._sma(closes, boll_period)
+            std = []
+            for i in range(len(closes)):
+                if i < boll_period - 1:
+                    std.append(None)
+                else:
+                    window = closes[i - boll_period + 1 : i + 1]
+                    avg = sum(window) / boll_period
+                    std.append(math.sqrt(sum((x - avg) ** 2 for x in window) / boll_period))
+            for i in range(len(closes)):
+                if ma[i] is None or std[i] is None:
+                    pass  # signals[i] 已是 0
+                elif closes[i] < ma[i] - 2 * std[i]:
+                    signals[i] = 1  # 跌破下轨买入
+                elif closes[i] > ma[i] + 2 * std[i]:
+                    signals[i] = -1  # 突破上轨卖出
 
-        # 模拟交易
+        # --- 模拟交易 ---
         trades = []
         nav = [1.0]
         position = 0
@@ -145,9 +196,11 @@ class StockPickService:
 
         for i in range(1, len(closes)):
             if signals[i] == 1 and position == 0:
-                shares = int(cash / closes[i] / 100) * 100
-                if shares > 0:
-                    cost = shares * closes[i] * 1.0003  # 佣金
+                shares = int(cash * 0.95 / closes[i] / 100) * 100
+                if shares == 0:
+                    shares = 100
+                cost = shares * closes[i] * 1.0003
+                if cost <= cash:
                     cash -= cost
                     position = shares
                     trades.append({
@@ -180,13 +233,11 @@ class StockPickService:
         days = len(closes)
         annual_return = ((nav[-1]) ** (252 / max(days, 1)) - 1) * 100
 
-        # 夏普比率
         returns = [(nav[i] - nav[i-1]) / nav[i-1] for i in range(1, len(nav))]
         avg_ret = sum(returns) / max(len(returns), 1)
         std_ret = math.sqrt(sum((r - avg_ret)**2 for r in returns) / max(len(returns), 1))
         sharpe = (avg_ret / std_ret * math.sqrt(252)) if std_ret > 0 else 0
 
-        # 胜率
         wins = sum(1 for t in trades if t["profit"] > 0 and t["action"] == "sell")
         sells = sum(1 for t in trades if t["action"] == "sell")
         win_rate = (wins / sells * 100) if sells > 0 else 0
@@ -212,7 +263,6 @@ class StockPickService:
         """获取K线数据"""
         result = []
         try:
-            # 使用腾讯API
             market = "sh" if code.startswith(("6", "9")) else "sz"
             url = f"http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={market}{code},day,,,320,qfq"
             resp = requests.get(url, timeout=10)
@@ -241,7 +291,7 @@ class StockPickService:
                 result.append(sum(values[i-n+1:i+1]) / n)
         return result
 
-    # ─── 策略列表 ───────────────────────────────────────────
+    # ========== 策略列表 ==========
     def get_strategies(self) -> list[dict]:
         return [
             {"key": "ma_cross", "name": "双均线交叉", "description": "短期均线上穿长期均线买入，下穿卖出",
@@ -251,6 +301,8 @@ class StockPickService:
              "params": [{"name": "momentum_days", "label": "动量周期", "default": 20, "min": 5, "max": 60}]},
             {"key": "grid", "name": "网格交易", "description": "在价格区间内等分网格，低买高卖",
              "params": [{"name": "grid_count", "label": "网格数量", "default": 10, "min": 5, "max": 50}]},
+            {"key": "mean_reversion", "name": "均值回归（布林带）", "description": "价格突破布林带上下轨时产生买卖信号",
+             "params": [{"name": "boll_period", "label": "布林带周期", "default": 20, "min": 10, "max": 60}]},
         ]
 
 
@@ -262,3 +314,4 @@ def get_stockpick_service() -> StockPickService:
     if _stockpick_service is None:
         _stockpick_service = StockPickService()
     return _stockpick_service
+

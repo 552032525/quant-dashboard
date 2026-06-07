@@ -4,27 +4,10 @@ from datetime import date, datetime, time, timedelta
 from app.adapters.base import DataSourceAdapter
 import logging
 
+from app.core.cache import get as cache_get, set as cache_set
+
 logger = logging.getLogger(__name__)
 
-# ── 简单内存缓存 ────────────────────────────────────────────
-_cache: dict = {}
-CACHE_TTL_SECONDS = {
-    "spot": 30,       # 全市场快照 30 秒
-    "kline": 300,     # K 线 5 分钟
-    "index": 30,      # 指数 30 秒
-    "heat": 60,       # 市场热度 60 秒
-    "sectors": 300,   # 板块 5 分钟
-    "rankings": 30,   # 排行 30 秒
-}
-
-def _cache_get(key: str) -> dict | None:
-    entry = _cache.get(key)
-    if entry and (datetime.now() - entry["ts"]).total_seconds() < entry["ttl"]:
-        return entry["data"]
-    return None
-
-def _cache_set(key: str, data, ttl_key: str = "spot"):
-    _cache[key] = {"data": data, "ts": datetime.now(), "ttl": CACHE_TTL_SECONDS.get(ttl_key, 30)}
 
 # ── 交易时间判断 ────────────────────────────────────────────
 def _is_trading_time() -> bool:
@@ -91,7 +74,7 @@ class AkshareAdapter(DataSourceAdapter):
     def _get_realtime_quote(self, code: str) -> dict:
         try:
             cache_key = f"quote:{code}"
-            cached = _cache_get(cache_key)
+            cached = cache_get(cache_key)
             if cached:
                 return cached
 
@@ -120,7 +103,7 @@ class AkshareAdapter(DataSourceAdapter):
                 "pre_close": _safe_float(r, "昨收"),
                 "trading_status": _trading_status(),
             }
-            _cache_set(cache_key, result, "spot")
+            cache_set(cache_key, result, "spot")
             return result
         except ValueError:
             raise
@@ -134,7 +117,7 @@ class AkshareAdapter(DataSourceAdapter):
     def _get_kline(self, code: str, start_date: date, end_date: date, period: str = "daily") -> list[dict]:
         try:
             cache_key = f"kline:{code}:{start_date}:{end_date}:{period}"
-            cached = _cache_get(cache_key)
+            cached = cache_get(cache_key)
             if cached:
                 return cached
 
@@ -164,7 +147,7 @@ class AkshareAdapter(DataSourceAdapter):
                          "close": _safe_float(row, "收盘"), "volume": _safe_float(row, "成交量")}
                         for _, row in df.iterrows()]
 
-            _cache_set(cache_key, result, "kline")
+            cache_set(cache_key, result, "kline")
             return result
         except Exception as e:
             logger.error(f"获取 {code} K线失败: {e}", exc_info=True)
@@ -176,7 +159,7 @@ class AkshareAdapter(DataSourceAdapter):
     def _search_symbol(self, keyword: str) -> list[dict]:
         try:
             cache_key = f"search:{keyword}"
-            cached = _cache_get(cache_key)
+            cached = cache_get(cache_key)
             if cached:
                 return cached
 
@@ -190,7 +173,7 @@ class AkshareAdapter(DataSourceAdapter):
             mask = df[name_col].astype(str).str.contains(keyword, na=False) | df[code_col].astype(str).str.contains(keyword, na=False)
             result = [{"code": str(row[code_col]), "name": str(row[name_col])}
                       for _, row in df[mask].head(20).iterrows()]
-            _cache_set(cache_key, result, "spot")
+            cache_set(cache_key, result, "spot")
             return result
         except Exception as e:
             logger.error(f"搜索股票失败: {e}", exc_info=True)
@@ -202,7 +185,7 @@ class AkshareAdapter(DataSourceAdapter):
     def _get_index_quotes(self) -> list[dict]:
         try:
             cache_key = "index_quotes"
-            cached = _cache_get(cache_key)
+            cached = cache_get(cache_key)
             if cached:
                 return cached
 
@@ -224,7 +207,7 @@ class AkshareAdapter(DataSourceAdapter):
                         "change": _safe_float(row, "涨跌额"),
                         "change_pct": _safe_float(row, "涨跌幅"),
                     })
-            _cache_set(cache_key, result, "index")
+            cache_set(cache_key, result, "index")
             return result
         except Exception as e:
             logger.error(f"获取指数行情失败: {e}", exc_info=True)
@@ -236,7 +219,7 @@ class AkshareAdapter(DataSourceAdapter):
     def _get_market_heat(self) -> dict:
         try:
             cache_key = "market_heat"
-            cached = _cache_get(cache_key)
+            cached = cache_get(cache_key)
             if cached:
                 return cached
 
@@ -268,7 +251,7 @@ class AkshareAdapter(DataSourceAdapter):
                 "total_volume": total_volume, "north_flow": north_flow,
                 "trading_status": _trading_status(),
             }
-            _cache_set(cache_key, result, "heat")
+            cache_set(cache_key, result, "heat")
             return result
         except Exception as e:
             logger.error(f"获取市场热度失败: {e}", exc_info=True)
@@ -282,7 +265,7 @@ class AkshareAdapter(DataSourceAdapter):
     def _get_sectors(self, sector_type: str) -> list[dict]:
         try:
             cache_key = f"sectors:{sector_type}"
-            cached = _cache_get(cache_key)
+            cached = cache_get(cache_key)
             if cached:
                 return cached
 
@@ -299,7 +282,7 @@ class AkshareAdapter(DataSourceAdapter):
                     "lead_stock": _safe_str(row, "领涨股票", "领涨股"),
                     "stock_count": _safe_int(row, "公司家数", "上涨家数"),
                 })
-            _cache_set(cache_key, result, "sectors")
+            cache_set(cache_key, result, "sectors")
             return result
         except Exception as e:
             logger.error(f"获取板块数据失败: {e}", exc_info=True)
@@ -311,7 +294,7 @@ class AkshareAdapter(DataSourceAdapter):
     def _get_rankings(self, rank_type: str, limit: int) -> list[dict]:
         try:
             cache_key = f"rankings:{rank_type}:{limit}"
-            cached = _cache_get(cache_key)
+            cached = cache_get(cache_key)
             if cached:
                 return cached
 
@@ -331,7 +314,7 @@ class AkshareAdapter(DataSourceAdapter):
                     "price": _safe_float(row, "最新价"),
                     "change_pct": _safe_float(row, chg_col),
                 })
-            _cache_set(cache_key, result, "rankings")
+            cache_set(cache_key, result, "rankings")
             return result
         except Exception as e:
             logger.error(f"获取排行榜失败: {e}", exc_info=True)
@@ -343,7 +326,7 @@ class AkshareAdapter(DataSourceAdapter):
     def _get_intraday(self, code: str) -> list[dict]:
         try:
             cache_key = f"intraday:{code}"
-            cached = _cache_get(cache_key)
+            cached = cache_get(cache_key)
             if cached:
                 return cached
 
@@ -361,8 +344,11 @@ class AkshareAdapter(DataSourceAdapter):
                     "avg_price": _safe_float(row, "收盘"),
                     "volume": _safe_float(row, "成交量"),
                 })
-            _cache_set(cache_key, result, "spot")
+            cache_set(cache_key, result, "spot")
             return result
         except Exception as e:
             logger.error(f"获取 {code} 分时数据失败: {e}", exc_info=True)
             return []
+
+
+

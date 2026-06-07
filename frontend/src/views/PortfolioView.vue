@@ -1,5 +1,5 @@
 ﻿<template>
-  <div class="p-6 max-w-7xl mx-auto h-full overflow-auto">
+  <div class="p-3 md:p-6 max-w-7xl mx-auto h-full overflow-auto">
     <h2 class="text-xl font-semibold text-white mb-4">💼 持仓 & 风控</h2>
 
     <div class="flex gap-1 mb-6 bg-[#0f1a2e] rounded-lg p-1 inline-flex">
@@ -10,7 +10,7 @@
 
     <!-- 持仓管理 -->
     <div v-show="tab==='manage'" class="space-y-4">
-      <div class="grid grid-cols-4 gap-3" v-if="p.summary">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3" v-if="p.summary">
         <MetricCard label="总资产" :value="p.summary.total_assets" trend="neutral" />
         <MetricCard label="持仓市值" :value="p.summary.total_market_value" trend="neutral" />
         <MetricCard label="浮动盈亏" :value="p.summary.total_profit_loss" :trend="p.summary.total_profit_loss>=0?'up':'down'" />
@@ -18,10 +18,10 @@
       </div>
       <div class="bg-[#0f1a2e] rounded-lg border border-[#1a314a] p-4">
         <h3 class="text-sm font-medium mb-3 text-[#8fa5c6]">添加持仓</h3>
-        <div class="flex gap-3">
+        <div class="flex flex-col md:flex-row gap-3">
           <input v-model="f.code" placeholder="股票代码" class="flex-1 bg-[#132438] text-white px-3 py-2 rounded-lg text-sm border border-[#1a314a] outline-none focus:ring-1 focus:ring-[#0052ff]" />
-          <input v-model.number="f.qty" type="number" placeholder="数量" class="w-24 bg-[#132438] text-white px-3 py-2 rounded-lg text-sm border border-[#1a314a] outline-none" />
-          <input v-model.number="f.cost" type="number" step="0.01" placeholder="成本价" class="w-28 bg-[#132438] text-white px-3 py-2 rounded-lg text-sm border border-[#1a314a] outline-none" />
+          <input v-model.number="f.qty" type="number" placeholder="数量" class="w-full md:w-24 bg-[#132438] text-white px-3 py-2 rounded-lg text-sm border border-[#1a314a] outline-none" />
+          <input v-model.number="f.cost" type="number" step="0.01" placeholder="成本价" class="w-full md:w-28 bg-[#132438] text-white px-3 py-2 rounded-lg text-sm border border-[#1a314a] outline-none" />
           <button @click="add" class="bg-[#0052ff] text-white px-5 py-2 rounded-full text-sm font-medium hover:opacity-90">添加</button>
         </div>
       </div>

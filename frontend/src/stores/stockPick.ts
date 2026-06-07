@@ -7,6 +7,7 @@ export const useStockPickStore = defineStore("stockPick", () => {
   const candidates = ref<any[]>([]);
   const strategies = ref<any[]>([]);
   const backtestResult = ref<any>(null);
+  const compareResult = ref<any>(null);
   const filters = ref({ pe_max: 100, pe_min: 0, pb_max: 20, pb_min: 0, roe_min: 0 });
 
   async function screen(f: any) {
@@ -29,5 +30,12 @@ export const useStockPickStore = defineStore("stockPick", () => {
     finally { loading.value = false; }
   }
 
-  return { loading, candidates, strategies, backtestResult, filters, screen, loadStrategies, runBacktest };
+  async function runCompare(params: any) {
+    loading.value = true;
+    try { compareResult.value = await api.stockpick.compare(params); }
+    catch (e: any) { console.error(e); }
+    finally { loading.value = false; }
+  }
+
+  return { loading, candidates, strategies, backtestResult, compareResult, filters, screen, loadStrategies, runBacktest, runCompare };
 });

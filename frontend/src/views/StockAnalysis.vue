@@ -1,10 +1,10 @@
 ﻿<template>
-  <div class="p-6 max-w-7xl mx-auto h-full overflow-auto">
+  <div class="p-3 md:p-6 max-w-7xl mx-auto h-full overflow-auto">
     <!-- 搜索栏 -->
-    <div class="flex gap-3 mb-6 items-center">
+    <div class="flex flex-col md:flex-row gap-3 mb-6 items-center">
       <h2 class="text-xl font-semibold text-white">🔍 个股深度分析</h2>
       <input v-model="code" @keyup.enter="search" placeholder="输入股票代码"
-        class="bg-[#132438] text-white px-3 py-2 rounded-lg text-sm w-36 outline-none focus:ring-1 focus:ring-[#0052ff] border border-[#1a314a]" />
+        class="bg-[#132438] text-white px-3 py-2 rounded-lg text-sm w-full md:w-36 outline-none focus:ring-1 focus:ring-[#0052ff] border border-[#1a314a]" />
       <button @click="search" class="bg-[#0052ff] text-white px-4 py-2 rounded-full text-sm font-medium hover:opacity-90">分析</button>
     </div>
 
@@ -16,7 +16,7 @@
 
     <!-- 四 Tab -->
     <div class="flex gap-1 mb-4 bg-[#0f1a2e] rounded-lg p-1 inline-flex flex-wrap">
-      <button v-for="t in tabs" :key="t.key" @click="tab=t.key" :class="tab===t.key?'bg-[#0052ff] text-white':'text-[#8fa5c6] hover:text-white'" class="px-4 py-1.5 rounded-md text-sm transition-colors">{{ t.label }}</button>
+      <button v-for="t in tabs" :key="t.key" @click="tab=t.key" :class="tab===t.key?'bg-[#0052ff] text-white':'text-[#8fa5c6] hover:text-white'" class="px-4 py-1.5 rounded-md text-xs md:text-sm transition-colors">{{ t.label }}</button>
     </div>
 
     <!-- === 技术面 === -->
@@ -26,11 +26,11 @@
       </div>
       <div v-if="tStore.indicators" class="space-y-4">
         <div class="bg-[#0f1a2e] rounded-lg border border-[#1a314a] p-3">
-          <div ref="klineRef" class="w-full" style="height:320px"></div>
+          <div ref="klineRef" class="w-full h-[280px] md:h-[320px]"></div>
         </div>
 
         <!-- 盘口深度 -->
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="col-span-1">
             <DepthPanel :data="depthData" />
           </div>
@@ -39,7 +39,7 @@
           </div>
         </div>
         <div ref="rsiRef" class="w-full" style="height:180px"></div>
-        <div v-if="tStore.score" class="grid grid-cols-5 gap-3">
+        <div v-if="tStore.score" class="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div v-for="m in scoreMetrics" :key="m.key" class="bg-[#0f1a2e] rounded-lg border border-[#1a314a] p-3 text-center">
             <div class="text-xs text-[#8fa5c6]">{{ m.label }}</div>
             <div class="text-lg font-bold" :class="m.color">{{ m.val(tStore.score) }}</div>
@@ -58,14 +58,14 @@
     <!-- === 基本面 === -->
     <div v-show="tab==='fundamental'" class="space-y-4">
       <div v-if="fStore.overview" class="space-y-4">
-        <div ref="finRef" class="w-full" style="height:260px"></div>
-        <div class="grid grid-cols-3 gap-3">
+        <div ref="finRef" class="w-full h-[220px] md:h-[260px]"></div>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
           <div v-for="m in finMetrics" :key="m.key" class="bg-[#0f1a2e] rounded-lg border border-[#1a314a] p-3 text-center">
             <div class="text-xs text-[#8fa5c6]">{{ m.label }}</div>
             <div class="text-lg font-bold" :class="m.color">{{ m.val }}</div>
           </div>
         </div>
-        <div v-if="fStore.valuation" class="grid grid-cols-4 gap-3">
+        <div v-if="fStore.valuation" class="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div v-for="v in valList" :key="v.key" class="bg-[#0f1a2e] rounded-lg border border-[#1a314a] p-3 text-center">
             <div class="text-xs text-[#8fa5c6]">{{ v.key }}</div>
             <div class="text-sm font-mono text-white">{{ fStore.valuation[v.key] }}</div>
@@ -84,7 +84,7 @@
     <!-- === 资金流 === -->
     <div v-show="tab==='fundflow'" class="space-y-4">
       <div v-if="ffStore.stockFlow" class="space-y-4">
-        <div ref="flowRef" class="w-full" style="height:260px"></div>
+        <div ref="flowRef" class="w-full h-[220px] md:h-[260px]"></div>
         <div class="bg-[#0f1a2e] rounded-lg border border-[#1a314a] overflow-hidden">
           <h3 class="text-sm font-semibold text-white p-4 pb-2">近20日资金流</h3>
           <div class="overflow-x-auto">
@@ -112,7 +112,7 @@
     <!-- === 舆情 === -->
     <div v-show="tab==='sentiment'" class="space-y-4">
       <div v-if="sStore.news" class="space-y-4">
-        <div v-if="sStore.sentiment" class="grid grid-cols-5 gap-3">
+        <div v-if="sStore.sentiment" class="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div class="bg-[#0f1a2e] rounded-lg border border-[#1a314a] p-3 text-center">
             <div class="text-xs text-[#8fa5c6]">舆情总分</div>
             <div class="text-xl font-bold" :class="sStore.sentiment.overall>0.2?'text-[#05b169]':sStore.sentiment.overall<-0.2?'text-[#cf202f]':'text-[#8fa5c6]'">{{ sStore.sentiment.overall.toFixed(2) }}</div>
@@ -324,4 +324,5 @@ onMounted(() => {
   if (c) { code.value = c; loadAll(c); }
 });
 </script>
+
 

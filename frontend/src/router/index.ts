@@ -7,6 +7,9 @@ const router = createRouter({
     { path: "/analysis/:code?", name: "analysis", component: () => import("../views/StockAnalysis.vue") },
     { path: "/portfolio", name: "portfolio", component: () => import("../views/PortfolioView.vue") },
     { path: "/stockpick", name: "stockpick", component: () => import("../views/StockPickView.vue") },
+    { path: "/stats", name: "stats", component: () => import("../views/StatsView.vue") },
+    { path: "/alerts", name: "alerts", component: () => import("../views/AlertView.vue") },
+    { path: "/behavior", name: "behavior", component: () => import("../views/BehaviorView.vue") },
     { path: "/ai", name: "ai", component: () => import("../views/AIAssistant.vue") },
     // 旧路由重定向
     { path: "/fundamental/:code?", redirect: (to:any) => `/analysis/${to.params.code||''}` },
@@ -19,3 +22,4 @@ const router = createRouter({
   ],
 });
 export default router;
+

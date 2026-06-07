@@ -1,12 +1,12 @@
 ﻿"""数据备份与导出"""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from app.core.database import get_db
-from fastapi import Depends
-import io, json, logging
+import csv, io, json, logging
 from datetime import datetime
+from app.api.portfolio import _fetch_current_price
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/data", tags=["data"])
@@ -85,9 +85,99 @@ async def db_info(db: AsyncSession = Depends(get_db)):
         result = await db.execute(select(model))
         info[name] = len(result.scalars().all())
 
-    # 数据库文件大小
     import os
     db_path = "quant_dashboard.db"
     db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
 
     return {"row_counts": info, "db_size_bytes": db_size, "db_size_mb": round(db_size / 1024 / 1024, 2)}
+
+@router.get("/export/trades/csv")
+async def export_trades_csv(db: AsyncSession = Depends(get_db)):
+    """导出交易记录为 CSV"""
+    from app.models.trade import Trade
+    from app.models.symbol import Symbol
+
+    result = await db.execute(select(Trade).order_by(Trade.trade_date.desc()))
+    trades = result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "股票代码", "股票名称", "方向", "数量", "价格", "手续费", "金额", "日期", "备注", "创建时间"])
+
+    for t in trades:
+        sym_result = await db.execute(select(Symbol).where(Symbol.id == t.symbol_id))
+        symbol = sym_result.scalar_one_or_none()
+        writer.writerow([
+            t.id,
+            symbol.code if symbol else "",
+            symbol.name if symbol else "",
+            "买入" if t.trade_type == "buy" else "卖出",
+            t.quantity,
+            t.price,
+            t.fee,
+            round(t.quantity * t.price, 2),
+            t.trade_date,
+            t.note or "",
+            t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=trades_{datetime.now().strftime('%Y%m%d')}.csv"}
+    )
+
+@router.get("/export/positions/csv")
+async def export_positions_csv(db: AsyncSession = Depends(get_db)):
+    """导出持仓为 CSV"""
+    from app.models.position import Position
+    from app.models.symbol import Symbol
+
+    result = await db.execute(select(Position).order_by(Position.created_at.desc()))
+    positions = result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "股票代码", "股票名称", "数量", "成本价", "现价", "市值", "盈亏", "盈亏%"])
+
+    for p in positions:
+        sym_result = await db.execute(select(Symbol).where(Symbol.id == p.symbol_id))
+        symbol = sym_result.scalar_one_or_none()
+        code = symbol.code if symbol else ""
+        current_price = await _fetch_current_price(code) if code else None
+        market_value = round(current_price * p.quantity, 2) if current_price else None
+        pl = round((current_price - p.cost_price) * p.quantity, 2) if current_price else None
+        pl_pct = round((current_price - p.cost_price) / p.cost_price * 100, 2) if current_price and p.cost_price > 0 else None
+
+        writer.writerow([
+            p.id,
+            code,
+            symbol.name if symbol else "",
+            p.quantity,
+            p.cost_price,
+            current_price if current_price else "",
+            market_value if market_value else "",
+            pl if pl is not None else "",
+            pl_pct if pl_pct is not None else "",
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=positions_{datetime.now().strftime('%Y%m%d')}.csv"}
+    )
+
+@router.get("/cache-stats")
+async def cache_stats():
+    """缓存统计信息"""
+    from app.core.cache import stats as cache_stats_func
+    return cache_stats_func()
+
+@router.post("/cache-clear")
+async def cache_clear():
+    """清空所有缓存"""
+    from app.core.cache import clear
+    clear()
+    return {"ok": True, "message": "缓存已清空"}

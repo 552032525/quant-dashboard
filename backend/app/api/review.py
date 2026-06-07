@@ -4,21 +4,12 @@ from datetime import date, timedelta
 import requests, re
 from openai import OpenAI
 from app.core.config import settings
+from app.core.sina_utils import sina_quote
 from app.schemas.review import DailyReview, StockReview, WeeklyReview
 
 SINA_HEADERS = {"Referer": "https://finance.sina.com.cn"}
 router = APIRouter(prefix="/review")
 
-
-def _sina_name(code: str) -> str:
-    prefix = "sh" + code if code.startswith(("6", "9")) else "sz" + code
-    try:
-        resp = requests.get(f"http://hq.sinajs.cn/list={prefix}", headers=SINA_HEADERS, timeout=10)
-        resp.encoding = "gbk"
-        m = re.search(r'"([^"]*)"', resp.text)
-        if m: return m.group(1).split(",")[0]
-    except Exception: pass
-    return code
 
 
 def _market_snapshot() -> str:
@@ -87,7 +78,7 @@ async def generate_daily_review():
 
 @router.post("/stock/{code}", response_model=StockReview)
 async def generate_stock_review(code: str):
-    name = _sina_name(code)
+    name = sina_quote(code)["name"]
 
     if not settings.openai_api_key:
         return StockReview(code=code, name=name, content="未配置 AI", technical_view="", fundamental_view="", overall_rating="")

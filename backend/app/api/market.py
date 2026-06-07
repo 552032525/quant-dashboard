@@ -1,8 +1,9 @@
 ﻿from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 from datetime import date, datetime, timedelta
-import requests, re, json, logging, asyncio
+import json, logging, asyncio
 from app.adapters import get_adapter
 from app.schemas.market import KLineItem, RealtimeQuote, SymbolInfo, IndexQuote, MarketHeat, SectorInfo, RankingItem, IntradayPoint
+from app.core.sina_utils import _sina_raw_parts
 
 router = APIRouter(prefix="/market")
 
@@ -108,17 +109,8 @@ async def websocket_quote(websocket: WebSocket, code: str):
 @router.get("/depth/{code}")
 async def get_depth(code: str):
     """获取五档买卖盘口（新浪接口）"""
-    prefix = "sh" + code if code.startswith(("6", "9")) else "sz" + code
     try:
-        resp = requests.get(f"http://hq.sinajs.cn/list={prefix}", headers={
-            "Referer": "https://finance.sina.com.cn"
-        }, timeout=5)
-        resp.encoding = "gbk"
-        m = re.search(r'"([^"]*)"', resp.text)
-        if not m:
-            return {"code": code, "bids": [], "asks": []}
-
-        parts = m.group(1).split(",")
+        parts = _sina_raw_parts(code)
         if len(parts) < 30:
             return {"code": code, "bids": [], "asks": []}
 
@@ -144,3 +136,61 @@ async def get_depth(code: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取盘口失败: {e}")
 
+
+# ── 市场广度 ───────────────────────────────────────────────
+@router.get("/breadth")
+async def get_market_breadth():
+    """获取市场广度：涨跌家数、涨停跌停数"""
+    try:
+        import akshare as ak
+        df = ak.stock_zh_a_spot_em()
+        if df is None or df.empty:
+            return {"up_count": 0, "down_count": 0, "flat_count": 0, "limit_up": 0, "limit_down": 0, "total_volume": 0, "up_volume": 0, "ratio": 0}
+        up_count = len(df[df["涨跌幅"] > 0])
+        down_count = len(df[df["涨跌幅"] < 0])
+        flat_count = len(df[df["涨跌幅"] == 0])
+        limit_up = len(df[df["涨跌幅"] >= 9.9])
+        limit_down = len(df[df["涨跌幅"] <= -9.9])
+        total_volume = df["成交额"].sum() / 1e8
+        up_volume = df[df["涨跌幅"] > 0]["成交额"].sum() / 1e8
+        return {
+            "up_count": int(up_count),
+            "down_count": int(down_count),
+            "flat_count": int(flat_count),
+            "limit_up": int(limit_up),
+            "limit_down": int(limit_down),
+            "total_volume": round(total_volume, 2),
+            "up_volume": round(up_volume, 2),
+            "ratio": round(up_count / max(up_count + down_count, 1) * 100, 1),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ── 指数历史走势 ────────────────────────────────────────────
+@router.get("/index-history")
+async def get_index_history(days: int = 30):
+    """获取三大指数近期走势"""
+    try:
+        import akshare as ak
+        end = date.today().strftime("%Y%m%d")
+        start = (date.today() - timedelta(days=days)).strftime("%Y%m%d")
+        indices = [
+            ("000001", "上证指数"),
+            ("399001", "深证成指"),
+            ("399006", "创业板指"),
+        ]
+        result = {}
+        for code, name in indices:
+            try:
+                df = ak.stock_zh_index_daily(symbol="sh" + code if code.startswith("0") else "sz" + code)
+                if df is not None and len(df) > 0:
+                    df = df.tail(days)
+                    result[code] = {
+                        "name": name,
+                        "data": [{"date": str(row["date"])[:10], "close": float(row["close"]), "volume": float(row["volume"])} for _, row in df.iterrows()],
+                    }
+            except Exception:
+                pass
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
