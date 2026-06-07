@@ -32,7 +32,7 @@ async def analyze(req: AnalyzeRequest):
         name=quote["name"], code=req.code, days=req.days, data=data_text
     )
     response = await _client().chat.completions.create(
-        model="gpt-4o",
+        model=settings.llm_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=400,
     )
@@ -49,7 +49,7 @@ async def chat(req: ChatRequest):
         )
         messages.insert(0, {"role": "system", "content": context})
     response = await _client().chat.completions.create(
-        model="gpt-4o",
+        model=settings.llm_model,
         messages=messages,
         max_tokens=600,
     )

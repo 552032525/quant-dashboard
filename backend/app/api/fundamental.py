@@ -104,7 +104,7 @@ async def report(req: dict):
         risk_items="; ".join(risk.get("risk_items", [])) or "无明显风险",
     )
     response = await _client().chat.completions.create(
-        model="gpt-4o",
+        model=settings.llm_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1200,
     )
@@ -147,7 +147,7 @@ P/E: {val['pe']}, P/B: {val['pb']}, ROE: {val['roe']}%
 """
     system_prompt = CHAT_PROMPT.format(name=overview["name"], code=code, financial_context=financial_context)
     response = await _client().chat.completions.create(
-        model="gpt-4o",
+        model=settings.llm_model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": message},
@@ -203,7 +203,7 @@ async def compare(req: CompareRequest):
 
     prompt = COMPARE_PROMPT.format(compare_data=json.dumps(table, ensure_ascii=False, indent=2))
     response = await _client().chat.completions.create(
-        model="gpt-4o",
+        model=settings.llm_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=500,
     )

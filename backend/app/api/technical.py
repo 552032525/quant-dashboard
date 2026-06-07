@@ -111,7 +111,7 @@ async def report(req: dict):
     )
 
     response = await _client().chat.completions.create(
-        model="gpt-4o",
+        model=settings.llm_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=800,
     )
