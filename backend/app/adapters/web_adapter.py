@@ -25,12 +25,23 @@ SECTOR_ETFS = [
 ]
 
 
+
+def _prefix(code: str) -> str:
+    """Return exchange prefix for Sina API: sh/sz/bj"""
+    # BJ must be checked first: 92xxxx starts with "9" but is BJ, not SH
+    if code.startswith(("8", "4")) or (len(code) == 6 and code.startswith("92")):
+        return "bj" + code
+    if code.startswith(("6", "9")):
+        return "sh" + code
+    return "sz" + code
+
+
 class WebAdapter(DataSourceAdapter):
 
     # ── 实时行情 ──
 
     async def get_realtime_quote(self, code: str) -> dict:
-        prefix = "sh" + code if code.startswith(("6", "9")) else "sz" + code
+        prefix = _prefix(code)
         url = SINA_QUOTE.format(codes=prefix)
         resp = requests.get(url, headers=SINA_HEADERS, timeout=10)
         resp.encoding = "gbk"
@@ -42,9 +53,15 @@ class WebAdapter(DataSourceAdapter):
         if len(parts) < 32:
             raise ValueError(f"数据不完整: {code}")
         price = float(parts[3])
-        pre_close = float(parts[2])
-        change = price - pre_close
-        change_pct = round(change / pre_close * 100, 2) if pre_close else 0
+        # BJ exchange: parts[2] is change, not pre_close
+        if code.startswith(("8", "4")):
+            change = float(parts[2])
+            pre_close = round(price - change, 3)
+            change_pct = round(change / pre_close * 100, 2) if pre_close else 0
+        else:
+            pre_close = float(parts[2])
+            change = round(price - pre_close, 3)
+            change_pct = round(change / pre_close * 100, 2) if pre_close else 0
         return {
             "code": code, "name": parts[0],
             "price": price, "change": round(change, 3),
@@ -57,7 +74,7 @@ class WebAdapter(DataSourceAdapter):
     # ── K线 ──
 
     async def get_kline(self, code: str, start_date: date, end_date: date, period: str = "daily") -> list[dict]:
-        prefix = "sh" + code if code.startswith(("6", "9")) else "sz" + code
+        prefix = _prefix(code)
         minute_map = {"1": "1", "5": "5", "15": "15", "30": "30", "60": "60"}
         if period in minute_map:
             url = TENCENT_MINUTE.format(prefix=prefix, minute=period, count=320)
@@ -95,7 +112,7 @@ class WebAdapter(DataSourceAdapter):
         seen = set()
         for name, raw in items:
             code = raw[2:]
-            if code not in seen and (code.startswith(("6", "0", "3", "9"))):
+            if code not in seen and (code.startswith(("6", "0", "3", "8", "9", "4"))):
                 seen.add(code)
                 results.append({"code": code, "name": name})
             if len(results) >= 10:
@@ -197,7 +214,7 @@ class WebAdapter(DataSourceAdapter):
     # ── 分时 ──
 
     async def get_intraday(self, code: str) -> list[dict]:
-        prefix = "sh" + code if code.startswith(("6", "9")) else "sz" + code
+        prefix = _prefix(code)
         url = f"http://ifzq.gtimg.cn/appstock/app/minute/query?_var=min_data&code={prefix}"
         resp = requests.get(url, timeout=15)
         text = resp.text
