@@ -42,4 +42,10 @@ export const api = {
     chat: (code: string, message: string) => request<any>("/fundamental/chat", { method: "POST", body: JSON.stringify({ code, message }) }),
     compare: (codes: string[]) => request<any>("/fundamental/compare", { method: "POST", body: JSON.stringify({ codes: codes, indicators: ["revenue_growth", "roe", "pe", "debt_ratio"] }) }),
   },
+  technical: {
+    indicators: (code: string, period = "daily") => request<any>(`/technical/indicators/${code}?period=${period}`),
+    anomaly: (code: string) => request<any>(`/technical/anomaly/${code}`),
+    score: (code: string) => request<any>("/technical/score", { method: "POST", body: JSON.stringify({ code }) }),
+    report: (code: string) => request<any>("/technical/report", { method: "POST", body: JSON.stringify({ code }) }),
+  },
 };

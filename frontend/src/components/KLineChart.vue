@@ -6,20 +6,19 @@
 import { ref, onMounted, watch, onUnmounted } from "vue";
 import * as echarts from "echarts";
 
-const props = defineProps<{ data: any[]; period?: string }>();
+const props = defineProps<{
+  data: any[];
+  period?: string;
+  ma5?: any[];
+  ma10?: any[];
+  ma20?: any[];
+  ma60?: any[];
+  boll_up?: any[];
+  boll_mid?: any[];
+  boll_dn?: any[];
+}>();
 const chartRef = ref<HTMLDivElement>();
 let chart: echarts.ECharts | null = null;
-
-function calcMA(data: any[], period: number) {
-  const r: (number | null)[] = [];
-  for (let i = 0; i < data.length; i++) {
-    if (i < period - 1) { r.push(null); continue; }
-    let s = 0;
-    for (let j = 0; j < period; j++) s += data[i - j].close;
-    r.push(+(s / period).toFixed(2));
-  }
-  return r;
-}
 
 function buildIntradayOption(data: any[]) {
   const dates = data.map((d) => d.date);
@@ -47,9 +46,6 @@ function buildIntradayOption(data: any[]) {
 
 function buildOption(data: any[]) {
   const dates = data.map((d) => d.date);
-  const ma5 = calcMA(data, 5);
-  const ma10 = calcMA(data, 10);
-  const ma20 = calcMA(data, 20);
   return {
     backgroundColor: "transparent",
     grid: [
@@ -66,9 +62,13 @@ function buildOption(data: any[]) {
     ],
     series: [
       { name: "K线", type: "candlestick", data: data.map((d) => [d.open, d.close, d.low, d.high]), itemStyle: { color: "#05b169", color0: "#cf202f", borderColor: "#05b169", borderColor0: "#cf202f" } },
-      { name: "MA5", type: "line", data: ma5, smooth: true, lineStyle: { color: "#f5a623", width: 1 }, symbol: "none" },
-      { name: "MA10", type: "line", data: ma10, smooth: true, lineStyle: { color: "#4a90d9", width: 1 }, symbol: "none" },
-      { name: "MA20", type: "line", data: ma20, smooth: true, lineStyle: { color: "#e066ff", width: 1 }, symbol: "none" },
+      { name: "MA5", type: "line", data: props.ma5 || [], smooth: true, showSymbol: false, lineStyle: { color: "#f59e0b", width: 1 } },
+      { name: "MA10", type: "line", data: props.ma10 || [], smooth: true, showSymbol: false, lineStyle: { color: "#3b82f6", width: 1 } },
+      { name: "MA20", type: "line", data: props.ma20 || [], smooth: true, showSymbol: false, lineStyle: { color: "#a855f7", width: 1 } },
+      { name: "MA60", type: "line", data: props.ma60 || [], smooth: true, showSymbol: false, lineStyle: { color: "#22c55e", width: 1 } },
+      { name: "BOLL-UP", type: "line", data: props.boll_up || [], showSymbol: false, lineStyle: { color: "#ef4444", width: 1, type: "dashed" } },
+      { name: "BOLL-MID", type: "line", data: props.boll_mid || [], showSymbol: false, lineStyle: { color: "#f59e0b", width: 1, type: "dashed" } },
+      { name: "BOLL-DN", type: "line", data: props.boll_dn || [], showSymbol: false, lineStyle: { color: "#22c55e", width: 1, type: "dashed" } },
       { name: "量", type: "bar", xAxisIndex: 1, yAxisIndex: 1, data: data.map((d) => d.volume), itemStyle: { color: (params: any) => { const i = params.dataIndex; return data[i]?.close >= data[i]?.open ? "#05b169" : "#cf202f"; } } },
     ],
     tooltip: { trigger: "axis", backgroundColor: "#132438", borderColor: "#1a314a", textStyle: { color: "#f0f4f8" } },

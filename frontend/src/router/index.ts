@@ -7,6 +7,7 @@ const router = createRouter({
     { path: "/portfolio", name: "portfolio", component: () => import("../views/PortfolioView.vue") },
     { path: "/fundamental/:code?", name: "fundamental", component: () => import("../views/FundamentalView.vue") },
     { path: "/ai", name: "ai", component: () => import("../views/AIChatView.vue") },
+    { path: "/technical/:code?", name: "technical", component: () => import("../views/TechnicalView.vue") },
   ],
 });
 export default router;
