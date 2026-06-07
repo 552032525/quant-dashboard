@@ -1,4 +1,5 @@
 ﻿from fastapi import APIRouter, HTTPException
+import logging
 from datetime import date, timedelta
 import requests, re
 from openai import OpenAI
@@ -16,7 +17,7 @@ def _sina_name(code: str) -> str:
         resp.encoding = "gbk"
         m = re.search(r'"([^"]*)"', resp.text)
         if m: return m.group(1).split(",")[0]
-    except: pass
+    except Exception: pass
     return code
 
 

@@ -1,4 +1,5 @@
 ﻿import requests, re
+import logging
 import akshare as ak
 import pandas as pd
 from datetime import datetime
@@ -12,7 +13,7 @@ def _sf(v, d=0.0):
         f = float(v)
         import pandas as pd, math
         return d if pd.isna(f) or math.isinf(f) else f
-    except:
+    except Exception:
         return d
 
 IDX_NET_PROFIT   = 0
@@ -46,18 +47,18 @@ class FinancialService:
         q = self._sina_quote(code)
         try:
             df = self._get_df(code)
-        except:
+        except Exception:
             return {'code': code, 'name': q['name'], 'data': []}
         cols = sorted([c for c in df.columns if str(c).startswith('20')])[-20:]
         result = []
         for c in cols:
             d = f'{c[:4]}-{c[4:6]}-{c[6:]}'
             try: rev = float(df.iloc[IDX_REVENUE][c]) / 1e8
-            except: rev = 0.0
+            except Exception: rev = 0.0
             try: prf = float(df.iloc[IDX_NET_PROFIT][c]) / 1e8
-            except: prf = 0.0
+            except Exception: prf = 0.0
             try: csh = float(df.iloc[IDX_OPERATING_CF][c]) / 1e8
-            except: csh = 0.0
+            except Exception: csh = 0.0
             result.append({'date': d, 'revenue': round(rev,2), 'net_profit': round(prf,2), 'cash_flow': _sf(round(csh,2))})
         return {'code': code, 'name': q['name'], 'data': result}
 
@@ -75,7 +76,7 @@ class FinancialService:
             pe = round(price / eps, 2) if eps > 0 else 0
             pb = round(price / bps, 2) if bps > 0 else 0
             ps = round(price / rps, 2) if rps > 0 else 0
-        except:
+        except Exception:
             pass
         return {'code': code, 'name': q['name'], 'pe': pe, 'pb': pb, 'ps': ps, 'roe': roe, 'dividend_yield': 0.0, 'industry_pe': 0.0}
 
@@ -93,7 +94,7 @@ class FinancialService:
                 import math
                 eq = float(df.iloc[IDX_EQUITY][latest])
                 goodwill_ratio = round(gw / eq * 100, 2) if eq > 0 and not math.isnan(gw) else 0
-            except: pass
+            except Exception: pass
             try:
                 recent_cols = sorted([c for c in df.columns if str(c).startswith('2025') or str(c).startswith('2026')])[-4:]
                 total_cf = sum(float(df.iloc[IDX_OPERATING_CF][c]) for c in recent_cols)
@@ -106,7 +107,7 @@ class FinancialService:
                 else:
                     cash_flow_health = '\u9884\u8b66'
                     risk_items.append(f'\u7ecf\u8425\u73b0\u91d1\u6d41/\u51c0\u5229\u6da6\u6bd4\u4ec5{ratio}\uff0c\u5229\u6da6\u542b\u91d1\u91cf\u4e0d\u8db3')
-            except: pass
+            except Exception: pass
             try:
                 pledge_df = ak.stock_gpzy_pledge_ratio_em()
                 code_col = pledge_df.columns[0]
@@ -114,7 +115,7 @@ class FinancialService:
                 if len(pledge_row) > 0:
                     ratio_col = pledge_df.columns[1]
                     pledge_ratio = float(pledge_row.iloc[0][ratio_col])
-            except: pass
+            except Exception: pass
         except Exception as e:
             risk_items.append(f'\u6570\u636e\u83b7\u53d6\u5f02\u5e38: {e}')
 
@@ -156,7 +157,7 @@ class FinancialService:
                     'ratio': float(row.iloc[2]) if len(row) > 2 and pd.notna(row.iloc[2]) else 0,
                     'change': str(row.iloc[3]) if len(row) > 3 else '\u4e0d\u53d8',
                 })
-        except: pass
+        except Exception: pass
         return {'code': code, 'name': q['name'], 'top_holders': holders, 'institution_change': '\u6682\u65e0\u6570\u636e'}
 
 

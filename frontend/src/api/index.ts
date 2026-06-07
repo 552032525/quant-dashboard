@@ -20,6 +20,8 @@ export const api = {
     sectors: (type = "industry") => request<any[]>(`/market/sectors?type=${type}`),
     rankings: (type = "up", limit = 20) => request<any[]>(`/market/rankings?type=${type}&limit=${limit}`),
     intraday: (code: string) => request<any[]>(`/market/intraday/${code}`),
+    depth: (code: string) => request<any>(`/market/depth/${code}`),
+    wsUrl: (code: string) => `ws://localhost:8000/api/market/ws/${code}`,
   },
   portfolio: {
     list: () => request<any[]>("/portfolio"),
@@ -27,6 +29,18 @@ export const api = {
     update: (id: number, data: any) => request<any>(`/portfolio/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: number) => request<void>(`/portfolio/${id}`, { method: "DELETE" }),
     summary: () => request<any>("/portfolio/summary"),
+  },
+  trade: {
+    list: (code?: string, limit = 50) => {
+      const params = new URLSearchParams();
+      if (code) params.set("symbol_code", code);
+      params.set("limit", String(limit));
+      return request<any[]>(`/trade?${params.toString()}`);
+    },
+    create: (data: any) => request<any>("/trade", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: number, data: any) => request<any>(`/trade/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    delete: (id: number) => request<void>(`/trade/${id}`, { method: "DELETE" }),
+    summary: (code?: string) => request<any>(`/trade/summary${code ? `?symbol_code=${encodeURIComponent(code)}` : ""}`),
   },
   ai: {
     analyze: (code: string, days = 30) => request<any>("/ai/analyze", { method: "POST", body: JSON.stringify({ symbol_code: code, days }) }),
@@ -88,5 +102,6 @@ export const api = {
     deleteAlert: (id: number) => request<any>(`/monitor/alerts/${id}`, { method: "DELETE" }),
     checkAlerts: () => request<any[]>("/monitor/check"),
     summary: () => request<any>("/monitor/summary"),
+    positionRisk: () => request<any[]>("/monitor/position-risk"),
   },
 };

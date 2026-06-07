@@ -19,6 +19,7 @@ class RealtimeQuote(BaseModel):
     low: float
     open: float
     pre_close: float
+    trading_status: str | None = None
 
 class SymbolInfo(BaseModel):
     code: str
@@ -41,6 +42,7 @@ class MarketHeat(BaseModel):
     limit_down: int
     total_volume: float
     north_flow: float
+    trading_status: str | None = None
 
 class SectorInfo(BaseModel):
     name: str

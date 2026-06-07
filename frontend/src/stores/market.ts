@@ -7,9 +7,13 @@ export const useMarketStore = defineStore("market", () => {
   const loading = ref(false);
   const error = ref("");
   const indexQuotes = ref<any[]>([]);
+  const indexError = ref("");
   const heat = ref<any>(null);
+  const heatError = ref("");
   const sectors = ref<any[]>([]);
+  const sectorsError = ref("");
   const rankings = ref<any[]>([]);
+  const rankingsError = ref("");
   const intradayData = ref<any[]>([]);
 
   async function fetchKline(code: string, p?: string) {
@@ -27,20 +31,26 @@ export const useMarketStore = defineStore("market", () => {
   }
 
   async function fetchIndex() {
-    try { indexQuotes.value = await api.market.index(); } catch {}
+    indexError.value = "";
+    try { indexQuotes.value = await api.market.index(); } catch (e: any) { indexError.value = e.message || "指数数据获取失败"; }
   }
   async function fetchHeat() {
-    try { heat.value = await api.market.heat(); } catch {}
+    heatError.value = "";
+    try { heat.value = await api.market.heat(); } catch (e: any) { heatError.value = e.message || "市场热度获取失败"; }
   }
   async function fetchSectors(type = "industry") {
-    try { sectors.value = await api.market.sectors(type); } catch {}
+    sectorsError.value = "";
+    try { sectors.value = await api.market.sectors(type); } catch (e: any) { sectorsError.value = e.message || "板块数据获取失败"; }
   }
   async function fetchRankings(type = "up") {
-    try { rankings.value = await api.market.rankings(type); } catch {}
+    rankingsError.value = "";
+    try { rankings.value = await api.market.rankings(type); } catch (e: any) { rankingsError.value = e.message || "排行数据获取失败"; }
   }
   async function fetchIntraday(code: string) {
-    try { intradayData.value = await api.market.intraday(code); } catch {}
+    try { intradayData.value = await api.market.intraday(code); } catch (e: any) { console.warn("分时数据获取失败:", e.message); }
   }
 
-  return { activeSymbol, period, klineData, quote, loading, error, indexQuotes, heat, sectors, rankings, intradayData, fetchKline, fetchIndex, fetchHeat, fetchSectors, fetchRankings, fetchIntraday };
+  return { activeSymbol, period, klineData, quote, loading, error,
+    indexQuotes, indexError, heat, heatError, sectors, sectorsError, rankings, rankingsError, intradayData,
+    fetchKline, fetchIndex, fetchHeat, fetchSectors, fetchRankings, fetchIntraday };
 });

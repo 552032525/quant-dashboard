@@ -1,4 +1,5 @@
 ﻿import requests, re, json
+import logging
 from datetime import date
 from openai import OpenAI
 from app.core.config import settings
@@ -13,7 +14,7 @@ def _sina_name(code: str) -> str:
         resp.encoding = "gbk"
         m = re.search(r'"([^"]*)"', resp.text)
         if m: return m.group(1).split(",")[0]
-    except: pass
+    except Exception: pass
     return code
 
 

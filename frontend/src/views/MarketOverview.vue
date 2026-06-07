@@ -1,17 +1,21 @@
 ﻿<template>
   <div class="h-full flex flex-col">
     <IndexBar :data="m.indexQuotes" />
+    <div v-if="m.indexError" class="text-xs text-[#cf202f] px-4 py-1 bg-[#cf202f]/10">{{ m.indexError }}</div>
     <HeatBar :data="m.heat" />
+    <div v-if="m.heatError" class="text-xs text-[#cf202f] px-4 py-1 bg-[#cf202f]/10">{{ m.heatError }}</div>
     <div class="flex-1 flex overflow-hidden">
       <div class="flex-1 border-r border-[#1a314a]">
         <SectorHeatmap :data="m.sectors" :type="sectorType"
           @toggle="sectorType = sectorType === 'industry' ? 'concept' : 'industry'; m.fetchSectors(sectorType)" />
+        <div v-if="m.sectorsError" class="text-xs text-[#cf202f] px-3 py-1">{{ m.sectorsError }}</div>
       </div>
       <div class="w-80 flex flex-col">
         <div class="flex-1 overflow-auto">
           <RankingList :data="m.rankings" :rankType="rankType"
             @toggle="rankType = rankType === 'up' ? 'down' : 'up'; m.fetchRankings(rankType)"
             @select="(code: string) => $router.push(`/stock/${code}`)" />
+          <div v-if="m.rankingsError" class="text-xs text-[#cf202f] px-3 py-1">{{ m.rankingsError }}</div>
         </div>
         <!-- 自选股面板 -->
         <div class="border-t border-[#1a314a] p-3 max-h-48 overflow-auto">
@@ -22,6 +26,7 @@
               <button @click="addWatch" class="text-[#0052ff] text-xs hover:opacity-80">+</button>
             </div>
           </div>
+          <div v-if="watchMsg" class="text-xs mb-2 px-2 py-1 rounded" :class="watchMsgType==='ok'?'text-[#05b169] bg-[#05b169]/10':'text-[#f59e0b] bg-[#f59e0b]/10'">{{ watchMsg }}</div>
           <div v-for="w in watchlist" :key="w.code" class="flex justify-between items-center py-1.5 border-b border-[#1a314a] last:border-0 cursor-pointer hover:bg-[#132438] px-1 rounded" @click="$router.push(`/analysis/${w.code}`)">
             <div>
               <span class="text-xs text-white">{{ w.name }}</span>
@@ -52,16 +57,39 @@ const sectorType = ref("industry");
 const rankType = ref("up");
 const watchInput = ref("");
 const watchlist = ref<any[]>([]);
+const watchMsg = ref("");
+const watchMsgType = ref("ok");
+let watchMsgTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showWatchMsg(msg: string, type: "ok" | "warn" = "ok") {
+  watchMsg.value = msg;
+  watchMsgType.value = type;
+  if (watchMsgTimer) clearTimeout(watchMsgTimer);
+  watchMsgTimer = setTimeout(() => { watchMsg.value = ""; }, 3000);
+}
 
 async function loadWatchlist() {
-  try { watchlist.value = await api.monitor.watchlist(); } catch(e){}
+  try { watchlist.value = await api.monitor.watchlist(); } catch(e: any) { showWatchMsg("自选列表加载失败: " + (e.message || "未知错误"), "warn"); }
 }
 async function addWatch() {
   const c = watchInput.value.trim(); if (!c) return;
-  try { await api.monitor.addWatch(c); watchInput.value = ""; await loadWatchlist(); } catch(e){}
+  try {
+    const result = await api.monitor.addWatch(c);
+    watchInput.value = "";
+    showWatchMsg(result.message || (result.added ? "添加成功" : "已存在"), result.added ? "ok" : "warn");
+    await loadWatchlist();
+  } catch(e: any) {
+    showWatchMsg("添加失败: " + (e.message || "网络错误"), "warn");
+  }
 }
 async function removeWatch(code: string) {
-  try { await api.monitor.removeWatch(code); await loadWatchlist(); } catch(e){}
+  try {
+    const result = await api.monitor.removeWatch(code);
+    showWatchMsg(result.message || "已移除", "ok");
+    await loadWatchlist();
+  } catch(e: any) {
+    showWatchMsg("移除失败: " + (e.message || "网络错误"), "warn");
+  }
 }
 
 onMounted(async () => {

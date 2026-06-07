@@ -36,3 +36,19 @@ class MonitorSummary(BaseModel):
     triggered_today: int
     watchlist_count: int
     recent_events: list[AlertEvent]
+
+
+class PositionRiskAlert(BaseModel):
+    code: str
+    name: str
+    weight_pct: float
+    message: str
+    risk_level: str  # low/medium/high
+
+
+class PositionRiskResult(BaseModel):
+    total_assets: float
+    position_count: int
+    alerts: list[PositionRiskAlert]
+    max_single_weight: float
+    max_single_code: str

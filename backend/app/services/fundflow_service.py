@@ -1,4 +1,5 @@
 ﻿import requests, re, json
+import logging
 from datetime import date, datetime, timedelta
 
 SINA_HEADERS = {"Referer": "https://finance.sina.com.cn"}
@@ -19,7 +20,7 @@ def _sina_name(code: str) -> str:
         m = re.search(r'"([^"]*)"', resp.text)
         if m:
             return m.group(1).split(",")[0]
-    except:
+    except Exception:
         pass
     return code
 

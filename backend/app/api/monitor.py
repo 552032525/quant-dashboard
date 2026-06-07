@@ -1,8 +1,10 @@
 ﻿from fastapi import APIRouter, HTTPException
+from app.adapters import get_adapter
 from datetime import datetime
-import requests, re
-from app.schemas.monitor import AlertRule, AlertEvent, WatchItem, MonitorSummary
+import requests, re, logging
+from app.schemas.monitor import AlertRule, AlertEvent, WatchItem, MonitorSummary, PositionRiskAlert
 
+logger = logging.getLogger(__name__)
 SINA_HEADERS = {"Referer": "https://finance.sina.com.cn"}
 router = APIRouter(prefix="/monitor")
 
@@ -25,7 +27,7 @@ def _sina_quote(code: str) -> dict:
                 chg = (price - prev) / prev * 100 if prev > 0 else 0
                 return {"name": parts[0], "price": price, "change_pct": round(chg, 2)}
     except Exception:
-        pass
+        logger.warning(f"新浪行情获取失败: {code}")
     return {"name": code, "price": 0, "change_pct": 0}
 
 
@@ -45,16 +47,18 @@ async def get_watchlist():
 
 @router.post("/watchlist/{code}")
 async def add_to_watchlist(code: str):
-    if code not in _watchlist:
-        _watchlist.append(code)
-    return {"ok": True, "code": code}
+    if code in _watchlist:
+        return {"ok": True, "code": code, "added": False, "message": f"股票 {code} 已在自选列表中"}
+    _watchlist.append(code)
+    return {"ok": True, "code": code, "added": True, "message": f"股票 {code} 已添加到自选列表"}
 
 
 @router.delete("/watchlist/{code}")
 async def remove_from_watchlist(code: str):
     if code in _watchlist:
         _watchlist.remove(code)
-    return {"ok": True}
+        return {"ok": True, "code": code, "removed": True, "message": f"股票 {code} 已从自选列表移除"}
+    return {"ok": True, "code": code, "removed": False, "message": f"股票 {code} 不在自选列表中"}
 
 
 @router.get("/alerts", response_model=list[AlertRule])
@@ -129,3 +133,79 @@ async def get_summary():
         watchlist_count=len(_watchlist),
         recent_events=events,
     )
+# ── 仓位风险检查 ──────────────────────────────────────────
+@router.get("/position-risk", response_model=list[PositionRiskAlert])
+async def check_position_risk():
+    """检查持仓占比是否超限"""
+    from app.schemas.monitor import PositionRiskAlert
+    alerts: list[PositionRiskAlert] = []
+    try:
+        # 从 portfolio 接口获取所有持仓
+        from app.api.portfolio import list_positions, get_summary
+        from app.core.database import async_session
+        from sqlalchemy import select
+        from app.models.position import Position
+        from app.models.symbol import Symbol
+
+        async with async_session() as db:
+            result = await db.execute(select(Position))
+            positions = result.scalars().all()
+            if not positions:
+                return alerts
+
+            total_market_value = 0.0
+            position_values = []
+
+            for p in positions:
+                sym_result = await db.execute(select(Symbol).where(Symbol.id == p.symbol_id))
+                symbol = sym_result.scalar_one_or_none()
+                code = symbol.code if symbol else ""
+                name = symbol.name if symbol else code
+
+                # 尝试获取实时价格
+                try:
+                    adapter = get_adapter()
+                    quote = await adapter.get_realtime_quote(code)
+                    price = float(quote.get("price", 0))
+                except Exception:
+                    price = p.cost_price  # 回退到成本价
+
+                market_value = price * p.quantity
+                total_market_value += market_value
+                position_values.append({
+                    "code": code, "name": name,
+                    "market_value": market_value, "price": price,
+                })
+
+            if total_market_value <= 0:
+                return alerts
+
+            for pv in position_values:
+                weight = round(pv["market_value"] / total_market_value * 100, 2)
+                risk_level = "low"
+                message = ""
+
+                if weight > 40:
+                    risk_level = "high"
+                    message = f"⚠ 单票占比 {weight}%，严重超标！建议降至 30% 以下"
+                elif weight > 30:
+                    risk_level = "medium"
+                    message = f"⚡ 单票占比 {weight}%，超过 30% 警戒线"
+                elif weight > 20:
+                    risk_level = "low"
+                    message = f"单票占比 {weight}%，适度关注"
+
+                if message:
+                    alerts.append(PositionRiskAlert(
+                        code=pv["code"], name=pv["name"],
+                        weight_pct=weight, message=message,
+                        risk_level=risk_level,
+                    ))
+
+            # 排序：高风险优先
+            alerts.sort(key=lambda a: {"high": 0, "medium": 1, "low": 2}[a.risk_level])
+    except Exception as e:
+        logger.error(f"仓位风险检查失败: {e}", exc_info=True)
+
+    return alerts
+

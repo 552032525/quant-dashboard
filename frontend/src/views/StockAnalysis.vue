@@ -28,7 +28,16 @@
         <div class="bg-[#0f1a2e] rounded-lg border border-[#1a314a] p-3">
           <div ref="klineRef" class="w-full" style="height:320px"></div>
         </div>
-        <div ref="macdRef" class="w-full" style="height:180px"></div>
+
+        <!-- 盘口深度 -->
+        <div class="grid grid-cols-2 gap-4">
+          <div class="col-span-1">
+            <DepthPanel :data="depthData" />
+          </div>
+          <div class="col-span-1 flex flex-col gap-2">
+            <div ref="macdRef" class="w-full flex-1" style="min-height:180px"></div>
+          </div>
+        </div>
         <div ref="rsiRef" class="w-full" style="height:180px"></div>
         <div v-if="tStore.score" class="grid grid-cols-5 gap-3">
           <div v-for="m in scoreMetrics" :key="m.key" class="bg-[#0f1a2e] rounded-lg border border-[#1a314a] p-3 text-center">
@@ -151,6 +160,7 @@ import * as echarts from "echarts";
 const route = useRoute(); const router = useRouter();
 const tStore = useTechnicalStore();
 const fStore = useFundamentalStore();
+const depthData = ref<any>(null);
 const ffStore = useFundFlowStore();
 const sStore = useSentimentStore();
 
@@ -289,6 +299,7 @@ function renderFlow() {
 }
 
 async function loadTechnical() { await tStore.fetchAll(code.value, techPeriod.value); }
+async function loadDepth() { try { depthData.value = await api.market.depth(code.value); } catch(e){} }
 
 async function doSentiment() {
   if (!sStore.news) return;
@@ -313,3 +324,4 @@ onMounted(() => {
   if (c) { code.value = c; loadAll(c); }
 });
 </script>
+

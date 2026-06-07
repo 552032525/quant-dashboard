@@ -4,5 +4,7 @@ from app.models.klinedata import KLineData
 from app.models.position import Position
 from app.models.alert import Alert
 from app.models.watchlist import WatchlistItem
+from app.models.trade import Trade
 
-__all__ = ["Base", "Symbol", "KLineData", "Position", "Alert", "WatchlistItem", "Market", "SymbolType"]
+__all__ = ["Base", "Symbol", "KLineData", "Position", "Alert", "WatchlistItem", "Trade", "Market", "SymbolType"]
+
