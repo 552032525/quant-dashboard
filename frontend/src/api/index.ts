@@ -32,4 +32,14 @@ export const api = {
     analyze: (code: string, days = 30) => request<any>("/ai/analyze", { method: "POST", body: JSON.stringify({ symbol_code: code, days }) }),
     chat: (message: string, code?: string) => request<any>("/ai/chat", { method: "POST", body: JSON.stringify({ message, symbol_code: code }) }),
   },
+
+  fundamental: {
+    overview: (code: string) => request<any>(`/fundamental/overview/${code}`),
+    valuation: (code: string) => request<any>(`/fundamental/valuation/${code}`),
+    risk: (code: string) => request<any>(`/fundamental/risk/${code}`),
+    holders: (code: string) => request<any>(`/fundamental/holders/${code}`),
+    report: (code: string) => request<any>("/fundamental/report", { method: "POST", body: JSON.stringify({ code }) }),
+    chat: (code: string, message: string) => request<any>("/fundamental/chat", { method: "POST", body: JSON.stringify({ code, message }) }),
+    compare: (codes: string[]) => request<any>("/fundamental/compare", { method: "POST", body: JSON.stringify({ codes: codes, indicators: ["revenue_growth", "roe", "pe", "debt_ratio"] }) }),
+  },
 };
