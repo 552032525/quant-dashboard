@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./quant_dashboard.db"
     redis_url: str = "redis://localhost:6379/0"
     openai_api_key: str = ""
-    openai_base_url: str = "https://api.deepseek.com/v1"
+    openai_base_url: str = "https://api.deepseek.com"
     data_source: str = "web"
     llm_model: str = "deepseek-chat"
 
