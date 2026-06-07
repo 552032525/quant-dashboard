@@ -4,10 +4,18 @@ const router = createRouter({
   routes: [
     { path: "/", name: "market", component: () => import("../views/MarketOverview.vue") },
     { path: "/stock/:code", name: "stock-detail", component: () => import("../views/MarketView.vue") },
+    { path: "/analysis/:code?", name: "analysis", component: () => import("../views/StockAnalysis.vue") },
     { path: "/portfolio", name: "portfolio", component: () => import("../views/PortfolioView.vue") },
-    { path: "/fundamental/:code?", name: "fundamental", component: () => import("../views/FundamentalView.vue") },
-    { path: "/ai", name: "ai", component: () => import("../views/AIChatView.vue") },
-    { path: "/technical/:code?", name: "technical", component: () => import("../views/TechnicalView.vue") },
+    { path: "/stockpick", name: "stockpick", component: () => import("../views/StockPickView.vue") },
+    { path: "/ai", name: "ai", component: () => import("../views/AIAssistant.vue") },
+    // 旧路由重定向
+    { path: "/fundamental/:code?", redirect: (to:any) => `/analysis/${to.params.code||''}` },
+    { path: "/technical/:code?", redirect: (to:any) => `/analysis/${to.params.code||''}` },
+    { path: "/fundflow/:code?", redirect: (to:any) => `/analysis/${to.params.code||''}` },
+    { path: "/sentiment/:code?", redirect: (to:any) => `/analysis/${to.params.code||''}` },
+    { path: "/risk", redirect: "/portfolio" },
+    { path: "/review", redirect: "/ai" },
+    { path: "/monitor", redirect: "/" },
   ],
 });
 export default router;

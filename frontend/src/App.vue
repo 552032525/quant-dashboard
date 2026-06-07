@@ -1,11 +1,11 @@
 ﻿<template>
   <div class="flex h-screen">
-    <nav class="w-14 bg-[#132438] flex flex-col items-center py-4 gap-5 border-r border-[#1a314a]">
+    <nav class="w-14 bg-[#132438] flex flex-col items-center py-4 gap-4 border-r border-[#1a314a] overflow-y-auto">
       <router-link to="/" class="w-9 h-9 flex items-center justify-center rounded-lg text-base hover:bg-[#1a314a] transition-colors" title="行情">📈</router-link>
-      <router-link to="/portfolio" class="w-9 h-9 flex items-center justify-center rounded-lg text-base hover:bg-[#1a314a] transition-colors" title="持仓">💼</router-link>
-      <router-link to="/ai" class="w-9 h-9 flex items-center justify-center rounded-lg text-base hover:bg-[#1a314a] transition-colors" title="AI">🤖</router-link>
-      <router-link to="/fundamental" class="w-9 h-9 flex items-center justify-center rounded-lg text-base hover:bg-[#1a314a] transition-colors" title="基本面">📋</router-link>
-      <router-link to="/technical" class="w-9 h-9 flex items-center justify-center rounded-lg text-base hover:bg-[#1a314a] transition-colors" title="技术面">📊</router-link>
+      <router-link to="/analysis" class="w-9 h-9 flex items-center justify-center rounded-lg text-base hover:bg-[#1a314a] transition-colors" title="个股分析">🔍</router-link>
+      <router-link to="/portfolio" class="w-9 h-9 flex items-center justify-center rounded-lg text-base hover:bg-[#1a314a] transition-colors" title="持仓风控">💼</router-link>
+      <router-link to="/ai" class="w-9 h-9 flex items-center justify-center rounded-lg text-base hover:bg-[#1a314a] transition-colors" title="AI助手">🤖</router-link>
+      <router-link to="/stockpick" class="w-9 h-9 flex items-center justify-center rounded-lg text-base hover:bg-[#1a314a] transition-colors" title="智能选股">🎯</router-link>
     </nav>
     <main class="flex-1 overflow-auto"><router-view /></main>
   </div>
