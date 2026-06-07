@@ -52,7 +52,7 @@ def _ema(values, n):
 def calc_all_indicators(klines: list[dict]) -> dict:
     """传入K线数据 [{date,open,high,low,close,volume}...] 返回完整指标"""
     n = len(klines)
-    if n < 60:
+    if n < 10:
         return {}
 
     dates = [k["date"] for k in klines]
